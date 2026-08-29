@@ -57,6 +57,28 @@
       </div>
     </section>
 
+    <section class="card deviation-card" aria-labelledby="deviationTitle">
+      <div class="section-heading compact">
+        <div>
+          <p class="section-kicker">TRACKING ERROR</p>
+          <h2 id="deviationTitle">左右偏差表盘</h2>
+        </div>
+        <div class="deviation-summary">
+          <strong id="deviationValue">--</strong>
+          <span id="deviationDirection">等待数据</span>
+        </div>
+      </div>
+      <div class="deviation-meter" aria-label="左右偏差范围负4000到正4000">
+        <div class="deviation-zones"><span></span><span></span><span></span></div>
+        <div class="deviation-needle waiting" id="deviationNeedle"><i></i></div>
+        <div class="deviation-center-line"></div>
+        <div class="deviation-ticks" aria-hidden="true">
+          <span>-4000</span><span>-2000</span><span>0</span><span>+2000</span><span>+4000</span>
+        </div>
+      </div>
+      <div class="deviation-labels"><span>← 偏左</span><strong>居中</strong><span>偏右 →</span></div>
+    </section>
+
     <section class="card" aria-labelledby="controlTitle">
       <div class="section-heading compact">
         <h2 id="controlTitle">车辆控制</h2>
@@ -126,6 +148,32 @@
         <div class="data-tile"><span>左轮 ML</span><strong id="mlValue">--</strong></div>
         <div class="data-tile"><span>右轮 MR</span><strong id="mrValue">--</strong></div>
       </div>
+    </section>
+
+    <section class="card chart-card" aria-labelledby="chartTitle">
+      <div class="section-heading compact">
+        <div>
+          <p class="section-kicker">最近 60 秒</p>
+          <h2 id="chartTitle">传感器变化曲线</h2>
+        </div>
+        <span class="chart-sample-count" id="chartSampleCount">0 点</span>
+      </div>
+      <div class="series-switches" aria-label="曲线显示选择">
+        <label class="series-chip l1"><input type="checkbox" data-series="l1" checked><span></span>L1</label>
+        <label class="series-chip l2"><input type="checkbox" data-series="l2" checked><span></span>L2</label>
+        <label class="series-chip r1"><input type="checkbox" data-series="r1" checked><span></span>R1</label>
+        <label class="series-chip r2"><input type="checkbox" data-series="r2" checked><span></span>R2</label>
+      </div>
+      <div class="chart-wrap">
+        <canvas id="sensorChart" aria-label="L1、L2、R1、R2 传感器变化曲线"></canvas>
+      </div>
+      <div class="chart-actions">
+        <button id="pauseChartButton" type="button">暂停</button>
+        <button id="clearChartButton" type="button">清空</button>
+        <button id="exportCsvButton" type="button" disabled>导出 CSV</button>
+        <button id="exportPngButton" type="button" disabled>导出 PNG</button>
+      </div>
+      <p class="chart-note">数据仅保存在当前设备，最多保留最近30分钟。</p>
     </section>
 
     <section class="card log-card" aria-labelledby="logTitle">

@@ -16,6 +16,10 @@ const ui = {
   obstacleOnButton: $("obstacleOnButton"), obstacleOffButton: $("obstacleOffButton"),
   l1Value: $("l1Value"), l2Value: $("l2Value"), r1Value: $("r1Value"), r2Value: $("r2Value"),
   errorValue: $("errorValue"), mlValue: $("mlValue"), mrValue: $("mrValue"),
+  deviationValue: $("deviationValue"), deviationDirection: $("deviationDirection"), deviationNeedle: $("deviationNeedle"),
+  sensorChart: $("sensorChart"), chartSampleCount: $("chartSampleCount"),
+  pauseChartButton: $("pauseChartButton"), clearChartButton: $("clearChartButton"),
+  exportCsvButton: $("exportCsvButton"), exportPngButton: $("exportPngButton"),
   aliveIndicator: $("aliveIndicator"), logWindow: $("logWindow"), clearLogButton: $("clearLogButton")
 };
 
@@ -25,6 +29,21 @@ let receiveBuffer = "";
 let aliveTimer = null;
 const decoder = new TextDecoder("utf-8");
 const encoder = new TextEncoder();
+const DEVIATION_LIMIT = 4000;
+const DEVIATION_CENTER_BAND = 100;
+const CHART_WINDOW_MS = 60 * 1000;
+const CHART_HISTORY_MS = 30 * 60 * 1000;
+const sensorHistory = [];
+let chartPaused = false;
+let chartPausedAt = 0;
+let chartDrawPending = false;
+
+const chartSeries = {
+  l1: { label: "L1", color: "#23d8ef" },
+  l2: { label: "L2", color: "#35e26f" },
+  r1: { label: "R1", color: "#ffc247" },
+  r2: { label: "R2", color: "#ff6480" }
+};
 
 function setMessage(text, isError = false) {
   ui.message.textContent = text;
@@ -161,8 +180,13 @@ function processLine(line) {
 
   const sensorMatch = line.match(/L1\s*=\s*(\d+).*?L2\s*=\s*(\d+).*?R1\s*=\s*(\d+).*?R2\s*=\s*(\d+).*?ERROR\s*=\s*(-?\d+).*?ML\s*=\s*(\d+).*?MR\s*=\s*(\d+)/i);
   if (sensorMatch) {
+    const values = sensorMatch.slice(1).map(Number);
     [ui.l1Value.textContent, ui.l2Value.textContent, ui.r1Value.textContent, ui.r2Value.textContent,
-      ui.errorValue.textContent, ui.mlValue.textContent, ui.mrValue.textContent] = sensorMatch.slice(1);
+      ui.errorValue.textContent, ui.mlValue.textContent, ui.mrValue.textContent] = values.map(String);
+    updateDeviation(values[4]);
+    recordSensorSample({
+      time: Date.now(), l1: values[0], l2: values[1], r1: values[2], r2: values[3], error: values[4]
+    });
   }
 
   const distanceMatch = line.match(/DIST\s*=\s*(OUT|\d+)\s*(?:CM)?/i);
@@ -196,6 +220,174 @@ function updateObstacle(state) {
   ui.obstacleState.querySelector(".shield").textContent = selected.symbol;
   ui.obstacleChinese.textContent = selected.chinese;
   ui.obstacleValue.textContent = state;
+}
+
+function updateDeviation(error) {
+  const numeric = Number(error);
+  if (!Number.isFinite(numeric)) return;
+  const limited = Math.max(-DEVIATION_LIMIT, Math.min(DEVIATION_LIMIT, numeric));
+  const percent = ((limited + DEVIATION_LIMIT) / (DEVIATION_LIMIT * 2)) * 100;
+  ui.deviationNeedle.style.left = `${percent}%`;
+  ui.deviationNeedle.classList.remove("waiting");
+  ui.deviationValue.textContent = numeric > 0 ? `+${numeric}` : String(numeric);
+  if (Math.abs(numeric) <= DEVIATION_CENTER_BAND) {
+    ui.deviationDirection.textContent = "居中";
+    ui.deviationValue.style.color = "var(--green)";
+  } else if (numeric < 0) {
+    ui.deviationDirection.textContent = "偏左";
+    ui.deviationValue.style.color = "var(--cyan)";
+  } else {
+    ui.deviationDirection.textContent = "偏右";
+    ui.deviationValue.style.color = "var(--amber)";
+  }
+}
+
+function recordSensorSample(sample) {
+  sensorHistory.push(sample);
+  const oldestAllowed = sample.time - CHART_HISTORY_MS;
+  while (sensorHistory.length && sensorHistory[0].time < oldestAllowed) sensorHistory.shift();
+  updateChartControls();
+  scheduleChartDraw();
+}
+
+function updateChartControls() {
+  const hasData = sensorHistory.length > 0;
+  ui.chartSampleCount.textContent = `${sensorHistory.length} 点`;
+  ui.exportCsvButton.disabled = !hasData;
+  ui.exportPngButton.disabled = !hasData;
+}
+
+function scheduleChartDraw() {
+  if (chartDrawPending) return;
+  chartDrawPending = true;
+  requestAnimationFrame(() => {
+    chartDrawPending = false;
+    drawSensorChart();
+  });
+}
+
+function drawSensorChart() {
+  const canvas = ui.sensorChart;
+  const rect = canvas.getBoundingClientRect();
+  if (rect.width < 10 || rect.height < 10) return;
+
+  const dpr = Math.min(window.devicePixelRatio || 1, 2);
+  const pixelWidth = Math.round(rect.width * dpr);
+  const pixelHeight = Math.round(rect.height * dpr);
+  if (canvas.width !== pixelWidth || canvas.height !== pixelHeight) {
+    canvas.width = pixelWidth;
+    canvas.height = pixelHeight;
+  }
+
+  const ctx = canvas.getContext("2d");
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  const width = rect.width;
+  const height = rect.height;
+  const plot = { left: 43, right: 12, top: 15, bottom: 28 };
+  const plotWidth = width - plot.left - plot.right;
+  const plotHeight = height - plot.top - plot.bottom;
+  const windowEnd = chartPaused ? chartPausedAt : Date.now();
+  const windowStart = windowEnd - CHART_WINDOW_MS;
+
+  ctx.fillStyle = "#030a12";
+  ctx.fillRect(0, 0, width, height);
+  ctx.font = "10px -apple-system, BlinkMacSystemFont, sans-serif";
+  ctx.lineWidth = 1;
+  ctx.textBaseline = "middle";
+
+  [0, 1024, 2048, 3072, 4095].forEach((value) => {
+    const y = plot.top + plotHeight - (value / 4095) * plotHeight;
+    ctx.strokeStyle = "rgba(80,116,150,.23)";
+    ctx.beginPath(); ctx.moveTo(plot.left, y); ctx.lineTo(width - plot.right, y); ctx.stroke();
+    ctx.fillStyle = "#667b91";
+    ctx.textAlign = "right";
+    ctx.fillText(String(value), plot.left - 6, y);
+  });
+
+  [60, 45, 30, 15, 0].forEach((secondsAgo, index) => {
+    const x = plot.left + (index / 4) * plotWidth;
+    ctx.strokeStyle = "rgba(80,116,150,.16)";
+    ctx.beginPath(); ctx.moveTo(x, plot.top); ctx.lineTo(x, height - plot.bottom); ctx.stroke();
+    ctx.fillStyle = "#667b91";
+    ctx.textAlign = index === 0 ? "left" : index === 4 ? "right" : "center";
+    ctx.fillText(secondsAgo === 0 ? "现在" : `-${secondsAgo}s`, x, height - 12);
+  });
+
+  const visible = sensorHistory.filter((point) => point.time >= windowStart && point.time <= windowEnd);
+  const enabledSeries = new Set(
+    [...document.querySelectorAll('.series-chip input:checked')].map((input) => input.dataset.series)
+  );
+
+  if (!visible.length) {
+    ctx.fillStyle = "#65798f";
+    ctx.font = "13px -apple-system, BlinkMacSystemFont, sans-serif";
+    ctx.textAlign = "center";
+    ctx.fillText("等待传感器数据", plot.left + plotWidth / 2, plot.top + plotHeight / 2);
+    return;
+  }
+
+  Object.entries(chartSeries).forEach(([key, series]) => {
+    if (!enabledSeries.has(key)) return;
+    ctx.beginPath();
+    visible.forEach((point, index) => {
+      const x = plot.left + ((point.time - windowStart) / CHART_WINDOW_MS) * plotWidth;
+      const y = plot.top + plotHeight - (point[key] / 4095) * plotHeight;
+      if (index === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+    });
+    ctx.strokeStyle = series.color;
+    ctx.lineWidth = 2;
+    ctx.lineJoin = "round";
+    ctx.lineCap = "round";
+    ctx.stroke();
+  });
+}
+
+function formatFileTimestamp(date = new Date()) {
+  const pad = (value) => String(value).padStart(2, "0");
+  return `${date.getFullYear()}${pad(date.getMonth() + 1)}${pad(date.getDate())}-${pad(date.getHours())}${pad(date.getMinutes())}${pad(date.getSeconds())}`;
+}
+
+function downloadBlob(blob, filename) {
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement("a");
+  anchor.href = url;
+  anchor.download = filename;
+  document.body.appendChild(anchor);
+  anchor.click();
+  anchor.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+function exportSensorCsv() {
+  if (!sensorHistory.length) return;
+  const firstTime = sensorHistory[0].time;
+  const rows = ["时间,相对秒,L1,L2,R1,R2,ERROR"];
+  sensorHistory.forEach((point) => {
+    rows.push([
+      new Date(point.time).toISOString(), ((point.time - firstTime) / 1000).toFixed(3),
+      point.l1, point.l2, point.r1, point.r2, point.error
+    ].join(","));
+  });
+  const blob = new Blob(["\uFEFF" + rows.join("\r\n")], { type: "text/csv;charset=utf-8" });
+  downloadBlob(blob, `smart-car-sensors-${formatFileTimestamp()}.csv`);
+  setMessage(`已导出 ${sensorHistory.length} 条传感器数据`);
+}
+
+function exportSensorPng() {
+  if (!sensorHistory.length) return;
+  drawSensorChart();
+  const filename = `smart-car-chart-${formatFileTimestamp()}.png`;
+  if (ui.sensorChart.toBlob) {
+    ui.sensorChart.toBlob((blob) => {
+      if (blob) downloadBlob(blob, filename);
+    }, "image/png");
+  } else {
+    const anchor = document.createElement("a");
+    anchor.href = ui.sensorChart.toDataURL("image/png");
+    anchor.download = filename;
+    anchor.click();
+  }
+  setMessage("曲线图片已导出");
 }
 
 function markAlive() {
@@ -251,7 +443,30 @@ ui.clearLogButton.addEventListener("click", () => {
   ui.logWindow.innerHTML = '<p class="muted">日志已清空</p>';
 });
 
+document.querySelectorAll(".series-chip input").forEach((input) => {
+  input.addEventListener("change", scheduleChartDraw);
+});
+ui.pauseChartButton.addEventListener("click", () => {
+  chartPaused = !chartPaused;
+  if (chartPaused) chartPausedAt = Date.now();
+  ui.pauseChartButton.textContent = chartPaused ? "继续" : "暂停";
+  scheduleChartDraw();
+});
+ui.clearChartButton.addEventListener("click", () => {
+  sensorHistory.length = 0;
+  if (chartPaused) chartPausedAt = Date.now();
+  updateChartControls();
+  scheduleChartDraw();
+  setMessage("传感器曲线已清空");
+});
+ui.exportCsvButton.addEventListener("click", exportSensorCsv);
+ui.exportPngButton.addEventListener("click", exportSensorPng);
+window.addEventListener("resize", scheduleChartDraw);
+setInterval(() => { if (!chartPaused) scheduleChartDraw(); }, 1000);
+
 setConnected(false);
 selectSpeed(3);
 selectMode(ui.sensorOnButton, ui.sensorOffButton, false);
 selectMode(ui.obstacleOnButton, ui.obstacleOffButton, true);
+updateChartControls();
+scheduleChartDraw();
