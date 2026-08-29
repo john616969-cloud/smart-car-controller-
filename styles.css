@@ -15,6 +15,7 @@
 }
 
 * { box-sizing: border-box; }
+[hidden] { display: none !important; }
 
 html, body { width: 100%; overflow-x: hidden; }
 
@@ -204,7 +205,21 @@ h2 { margin: 0; font-size: 1.16rem; }
 .chart-actions button:active:not(:disabled) { transform: scale(.98); }
 .chart-actions button:disabled { opacity: .35; cursor: not-allowed; }
 .chart-actions button:nth-last-child(-n+2) { color: #65baff; border-color: #245b8d; }
+.chart-actions .diagnostic-export-button { grid-column: 1 / -1; color: white; border-color: #1687ff; background: linear-gradient(135deg, rgba(22,135,255,.85), rgba(26,91,222,.9)); }
 .chart-note { margin: 10px 2px 0; color: #687a91; font-size: .7rem; text-align: center; }
+
+body.modal-open { overflow: hidden; }
+.export-modal { position: fixed; z-index: 1000; inset: 0; display: grid; align-items: end; padding: max(16px, env(safe-area-inset-top)) 12px max(16px, env(safe-area-inset-bottom)); }
+.export-backdrop { position: absolute; inset: 0; background: rgba(0,5,12,.82); backdrop-filter: blur(5px); }
+.export-panel { position: relative; width: min(100%, 760px); max-height: 92vh; margin: 0 auto; padding: 18px; border: 1px solid #245382; border-radius: 22px; background: #081525; box-shadow: 0 25px 80px rgba(0,0,0,.6); overflow: auto; }
+.export-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 14px; }
+.modal-close { width: 44px; height: 44px; flex: 0 0 auto; border: 1px solid #34506c; border-radius: 50%; background: #102238; color: white; font-size: 1.6rem; line-height: 1; cursor: pointer; }
+.export-help { margin: 14px 0; color: #aab9cc; font-size: .84rem; line-height: 1.55; }
+.export-image { display: block; width: 100%; height: auto; max-height: 56vh; border: 1px solid #29445f; border-radius: 13px; background: #030a12; object-fit: contain; -webkit-touch-callout: default; user-select: auto; }
+.export-text { width: 100%; height: min(56vh, 520px); resize: vertical; padding: 13px; border: 1px solid #29445f; border-radius: 13px; outline: none; background: #02070d; color: #7bf09c; font: .72rem/1.5 ui-monospace, SFMono-Regular, Consolas, monospace; }
+.export-actions { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-top: 14px; }
+.export-actions button { min-height: 46px; padding: 6px 8px; border: 1px solid #315374; border-radius: 11px; background: #102238; color: #d6e4f5; font-size: .78rem; font-weight: 800; cursor: pointer; }
+.export-actions button.share { color: white; border-color: #1687ff; background: #126dd1; }
 
 .text-button { min-height: auto; padding: 5px 10px; cursor: pointer; }
 .log-window { height: 150px; overflow: auto; padding: 12px; border-radius: 13px; background: #03080e; color: #58ec85; font: .79rem/1.55 ui-monospace, SFMono-Regular, Consolas, monospace; }
@@ -222,6 +237,7 @@ h2 { margin: 0; font-size: 1.16rem; }
   .distance-value strong { font-size: 2.55rem; }
   .obstacle-state .shield { width: 48px; height: 56px; border-width: 4px; }
   .obstacle-state strong { font-size: 1.1rem; }
+  .export-actions { grid-template-columns: 1fr 1fr; }
   .control-grid { grid-template-columns: 1fr 1fr; }
   .drive.stop { grid-column: span 2; grid-row: 1; min-height: 64px; }
   .drive.forward, .drive.reverse { grid-row: 2; }

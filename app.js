@@ -20,6 +20,11 @@ const ui = {
   sensorChart: $("sensorChart"), chartSampleCount: $("chartSampleCount"),
   pauseChartButton: $("pauseChartButton"), clearChartButton: $("clearChartButton"),
   exportCsvButton: $("exportCsvButton"), exportPngButton: $("exportPngButton"),
+  exportReportButton: $("exportReportButton"), exportModal: $("exportModal"),
+  exportModalTitle: $("exportModalTitle"), exportHelp: $("exportHelp"),
+  exportImage: $("exportImage"), exportText: $("exportText"),
+  shareExportButton: $("shareExportButton"), copyExportButton: $("copyExportButton"),
+  downloadExportButton: $("downloadExportButton"),
   aliveIndicator: $("aliveIndicator"), logWindow: $("logWindow"), clearLogButton: $("clearLogButton")
 };
 
@@ -34,9 +39,23 @@ const DEVIATION_CENTER_BAND = 100;
 const CHART_WINDOW_MS = 60 * 1000;
 const CHART_HISTORY_MS = 30 * 60 * 1000;
 const sensorHistory = [];
+const diagnosticLogs = [];
 let chartPaused = false;
 let chartPausedAt = 0;
 let chartDrawPending = false;
+let activeExport = null;
+
+const diagnosticState = {
+  connected: false,
+  deviceName: "--",
+  speed: 30,
+  sensorEnabled: false,
+  obstacleEnabled: true,
+  distance: "--",
+  obstacle: "--",
+  l1: "--", l2: "--", r1: "--", r2: "--",
+  error: "--", ml: "--", mr: "--"
+};
 
 const chartSeries = {
   l1: { label: "L1", color: "#23d8ef" },
@@ -51,6 +70,7 @@ function setMessage(text, isError = false) {
 }
 
 function setConnected(connected) {
+  diagnosticState.connected = connected;
   ui.connectionState.classList.toggle("connected", connected);
   ui.connectionText.textContent = connected ? "已连接" : "未连接";
   ui.connectButton.disabled = connected;
@@ -60,6 +80,9 @@ function setConnected(connected) {
 }
 
 function addLog(text, kind = "rx") {
+  diagnosticLogs.push({ time: Date.now(), kind, text: String(text) });
+  while (diagnosticLogs.length > 80) diagnosticLogs.shift();
+
   const placeholder = ui.logWindow.querySelector(".muted");
   if (placeholder) placeholder.remove();
 
@@ -101,6 +124,7 @@ async function connectBluetooth() {
     }
 
     ui.deviceName.textContent = bluetoothDevice.name || "未命名设备";
+    diagnosticState.deviceName = bluetoothDevice.name || "未命名设备";
     setConnected(true);
     setMessage("连接成功，可以控制小车");
     addLog("已连接 " + (bluetoothDevice.name || "未命名设备"));
@@ -183,6 +207,8 @@ function processLine(line) {
     const values = sensorMatch.slice(1).map(Number);
     [ui.l1Value.textContent, ui.l2Value.textContent, ui.r1Value.textContent, ui.r2Value.textContent,
       ui.errorValue.textContent, ui.mlValue.textContent, ui.mrValue.textContent] = values.map(String);
+    [diagnosticState.l1, diagnosticState.l2, diagnosticState.r1, diagnosticState.r2,
+      diagnosticState.error, diagnosticState.ml, diagnosticState.mr] = values;
     updateDeviation(values[4]);
     recordSensorSample({
       time: Date.now(), l1: values[0], l2: values[1], r1: values[2], r2: values[3], error: values[4]
@@ -205,6 +231,7 @@ function updateDistance(value) {
   const isOut = String(value).toUpperCase() === "OUT";
   ui.distanceValue.textContent = isOut ? "OUT" : value;
   ui.distanceUnit.textContent = isOut ? "" : "cm";
+  diagnosticState.distance = isOut ? "OUT" : String(value);
   const numeric = isOut ? 100 : Math.max(0, Math.min(Number(value), 100));
   ui.distanceGauge.style.setProperty("--progress", `${numeric * 3.6}deg`);
 }
@@ -220,6 +247,7 @@ function updateObstacle(state) {
   ui.obstacleState.querySelector(".shield").textContent = selected.symbol;
   ui.obstacleChinese.textContent = selected.chinese;
   ui.obstacleValue.textContent = state;
+  diagnosticState.obstacle = state;
 }
 
 function updateDeviation(error) {
@@ -373,21 +401,160 @@ function exportSensorCsv() {
   setMessage(`已导出 ${sensorHistory.length} 条传感器数据`);
 }
 
-function exportSensorPng() {
+function dataUrlToBlob(dataUrl) {
+  const parts = dataUrl.split(",");
+  const mime = (parts[0].match(/data:([^;]+)/) || [])[1] || "application/octet-stream";
+  const bytes = atob(parts[1]);
+  const array = new Uint8Array(bytes.length);
+  for (let index = 0; index < bytes.length; index += 1) array[index] = bytes.charCodeAt(index);
+  return new Blob([array], { type: mime });
+}
+
+function openExportModal(config) {
+  activeExport = config;
+  ui.exportModalTitle.textContent = config.title;
+  ui.exportHelp.textContent = config.help;
+  ui.exportImage.hidden = config.kind !== "image";
+  ui.exportText.hidden = config.kind !== "text";
+  ui.copyExportButton.hidden = config.kind !== "text";
+  if (config.kind === "image") ui.exportImage.src = config.dataUrl;
+  else ui.exportText.value = config.text;
+  ui.exportModal.hidden = false;
+  document.body.classList.add("modal-open");
+}
+
+function closeExportModal() {
+  ui.exportModal.hidden = true;
+  document.body.classList.remove("modal-open");
+  ui.exportImage.removeAttribute("src");
+  activeExport = null;
+}
+
+function openSensorImage() {
   if (!sensorHistory.length) return;
-  drawSensorChart();
-  const filename = `smart-car-chart-${formatFileTimestamp()}.png`;
-  if (ui.sensorChart.toBlob) {
-    ui.sensorChart.toBlob((blob) => {
-      if (blob) downloadBlob(blob, filename);
-    }, "image/png");
-  } else {
-    const anchor = document.createElement("a");
-    anchor.href = ui.sensorChart.toDataURL("image/png");
-    anchor.download = filename;
-    anchor.click();
+  try {
+    drawSensorChart();
+    const dataUrl = ui.sensorChart.toDataURL("image/png");
+    if (!dataUrl.startsWith("data:image/png")) throw new Error("图片格式生成失败");
+    openExportModal({
+      kind: "image",
+      title: "曲线图片",
+      help: "苹果手机：长按下面的图片，然后选择保存到照片；也可以尝试系统分享。",
+      filename: `smart-car-chart-${formatFileTimestamp()}.png`,
+      blob: dataUrlToBlob(dataUrl),
+      dataUrl
+    });
+  } catch (error) {
+    setMessage("曲线图片生成失败：" + error.message, true);
+    addLog("曲线图片生成失败：" + error.message, "error");
   }
-  setMessage("曲线图片已导出");
+}
+
+function buildDiagnosticReport() {
+  const lines = [
+    "SMART CAR DIAGNOSTIC REPORT",
+    "智能车完整调试报告",
+    "========================================",
+    "",
+    "[基本信息]",
+    `导出时间=${new Date().toISOString()}`,
+    `页面地址=${location.href}`,
+    `浏览器=${navigator.userAgent}`,
+    `BLE设备=${diagnosticState.deviceName}`,
+    `连接状态=${diagnosticState.connected ? "已连接" : "未连接"}`,
+    "服务/特征=FFE0/FFE1",
+    "",
+    "[当前控制状态]",
+    `速度=${diagnosticState.speed}%`,
+    `循迹传感器=${diagnosticState.sensorEnabled ? "ON" : "OFF"}`,
+    `自动避障=${diagnosticState.obstacleEnabled ? "ON" : "OFF"}`,
+    `距离=${diagnosticState.distance}${/^\d+$/.test(String(diagnosticState.distance)) ? "cm" : ""}`,
+    `障碍状态=${diagnosticState.obstacle}`,
+    "",
+    "[当前传感器与电机]",
+    `L1=${diagnosticState.l1}`,
+    `L2=${diagnosticState.l2}`,
+    `R1=${diagnosticState.r1}`,
+    `R2=${diagnosticState.r2}`,
+    `ERROR=${diagnosticState.error}`,
+    `ML=${diagnosticState.ml}`,
+    `MR=${diagnosticState.mr}`,
+    "",
+    `[传感器历史数据，共${sensorHistory.length}条]`,
+    "时间,相对秒,L1,L2,R1,R2,ERROR"
+  ];
+
+  const firstTime = sensorHistory.length ? sensorHistory[0].time : 0;
+  sensorHistory.forEach((point) => {
+    lines.push([
+      new Date(point.time).toISOString(), ((point.time - firstTime) / 1000).toFixed(3),
+      point.l1, point.l2, point.r1, point.r2, point.error
+    ].join(","));
+  });
+
+  lines.push("", `[最近通信日志，共${diagnosticLogs.length}条]`, "时间,方向,内容");
+  diagnosticLogs.forEach((entry) => {
+    lines.push(`${new Date(entry.time).toISOString()},${entry.kind.toUpperCase()},${entry.text.replace(/[\r\n]+/g, " ")}`);
+  });
+  lines.push("", "END OF REPORT");
+  return lines.join("\r\n");
+}
+
+function openDiagnosticReport() {
+  const text = buildDiagnosticReport();
+  openExportModal({
+    kind: "text",
+    title: "完整调试报告",
+    help: "建议点击“系统分享”直接发送文件；如果分享不可用，就点“复制全部”后粘贴给我。",
+    filename: `smart-car-diagnostic-${formatFileTimestamp()}.txt`,
+    blob: new Blob(["\uFEFF" + text], { type: "text/plain;charset=utf-8" }),
+    text
+  });
+}
+
+async function shareActiveExport() {
+  if (!activeExport) return;
+  let fileShareError = null;
+  try {
+    if (!navigator.share) throw new Error("当前浏览器没有系统分享功能");
+
+    try {
+      const file = new File([activeExport.blob], activeExport.filename, { type: activeExport.blob.type });
+      if (!navigator.canShare || navigator.canShare({ files: [file] })) {
+        await navigator.share({ title: activeExport.title, files: [file] });
+        return;
+      }
+    } catch (error) {
+      if (error.name === "AbortError") return;
+      fileShareError = error;
+    }
+
+    if (activeExport.kind === "text") {
+      await navigator.share({ title: activeExport.title, text: activeExport.text });
+      return;
+    }
+    throw fileShareError || new Error("当前浏览器不能分享图片文件，请长按图片保存");
+  } catch (error) {
+    if (error.name === "AbortError") return;
+    setMessage(error.message, true);
+    addLog("分享失败：" + error.message, "error");
+  }
+}
+
+async function copyActiveText() {
+  if (!activeExport || activeExport.kind !== "text") return;
+  try {
+    if (navigator.clipboard && window.isSecureContext) {
+      await navigator.clipboard.writeText(activeExport.text);
+    } else {
+      ui.exportText.focus();
+      ui.exportText.select();
+      if (!document.execCommand("copy")) throw new Error("自动复制失败");
+    }
+    setMessage("调试报告已复制，可以直接粘贴发送");
+  } catch (error) {
+    setMessage("复制失败，请在报告文本中长按并选择复制", true);
+  }
 }
 
 function markAlive() {
@@ -404,6 +571,7 @@ function selectSpeed(speed) {
   const value = Math.max(1, Math.min(9, Number(speed)));
   ui.speedSlider.value = String(value);
   ui.speedReadout.textContent = `${value * 10}%`;
+  diagnosticState.speed = value * 10;
   ui.speedPresets.querySelectorAll("button").forEach((button) => {
     button.classList.toggle("selected", Number(button.dataset.speed) === value);
   });
@@ -412,6 +580,8 @@ function selectSpeed(speed) {
 function selectMode(onButton, offButton, enabled) {
   onButton.classList.toggle("selected", enabled);
   offButton.classList.toggle("selected", !enabled);
+  if (onButton === ui.sensorOnButton) diagnosticState.sensorEnabled = enabled;
+  if (onButton === ui.obstacleOnButton) diagnosticState.obstacleEnabled = enabled;
 }
 
 ui.connectButton.addEventListener("click", connectBluetooth);
@@ -440,6 +610,7 @@ ui.speedPresets.querySelectorAll("button").forEach((button) => {
 });
 
 ui.clearLogButton.addEventListener("click", () => {
+  diagnosticLogs.length = 0;
   ui.logWindow.innerHTML = '<p class="muted">日志已清空</p>';
 });
 
@@ -460,7 +631,19 @@ ui.clearChartButton.addEventListener("click", () => {
   setMessage("传感器曲线已清空");
 });
 ui.exportCsvButton.addEventListener("click", exportSensorCsv);
-ui.exportPngButton.addEventListener("click", exportSensorPng);
+ui.exportPngButton.addEventListener("click", openSensorImage);
+ui.exportReportButton.addEventListener("click", openDiagnosticReport);
+ui.shareExportButton.addEventListener("click", shareActiveExport);
+ui.copyExportButton.addEventListener("click", copyActiveText);
+ui.downloadExportButton.addEventListener("click", () => {
+  if (activeExport) downloadBlob(activeExport.blob, activeExport.filename);
+});
+document.querySelectorAll("[data-close-export]").forEach((button) => {
+  button.addEventListener("click", closeExportModal);
+});
+document.addEventListener("keydown", (event) => {
+  if (event.key === "Escape" && !ui.exportModal.hidden) closeExportModal();
+});
 window.addEventListener("resize", scheduleChartDraw);
 setInterval(() => { if (!chartPaused) scheduleChartDraw(); }, 1000);
 

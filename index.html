@@ -171,7 +171,8 @@
         <button id="pauseChartButton" type="button">暂停</button>
         <button id="clearChartButton" type="button">清空</button>
         <button id="exportCsvButton" type="button" disabled>导出 CSV</button>
-        <button id="exportPngButton" type="button" disabled>导出 PNG</button>
+        <button id="exportPngButton" type="button" disabled>曲线图片</button>
+        <button class="diagnostic-export-button" id="exportReportButton" type="button">生成调试报告（可发给我分析）</button>
       </div>
       <p class="chart-note">数据仅保存在当前设备，最多保留最近30分钟。</p>
     </section>
@@ -186,6 +187,28 @@
       </div>
     </section>
   </main>
+
+  <div class="export-modal" id="exportModal" hidden>
+    <div class="export-backdrop" data-close-export></div>
+    <section class="export-panel" role="dialog" aria-modal="true" aria-labelledby="exportModalTitle">
+      <header class="export-header">
+        <div>
+          <p class="section-kicker">本地生成，不上传数据</p>
+          <h2 id="exportModalTitle">导出</h2>
+        </div>
+        <button class="modal-close" type="button" data-close-export aria-label="关闭">×</button>
+      </header>
+      <p class="export-help" id="exportHelp"></p>
+      <img class="export-image" id="exportImage" alt="传感器变化曲线导出预览" hidden>
+      <textarea class="export-text" id="exportText" readonly hidden aria-label="完整调试报告"></textarea>
+      <div class="export-actions">
+        <button class="share" id="shareExportButton" type="button">系统分享</button>
+        <button id="copyExportButton" type="button">复制全部</button>
+        <button id="downloadExportButton" type="button">下载文件</button>
+        <button type="button" data-close-export>关闭</button>
+      </div>
+    </section>
+  </div>
 
   <script src="app.js"></script>
 </body>
