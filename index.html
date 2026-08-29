@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta name="theme-color" content="#050b14">
   <title>智能车控制台</title>
-  <link rel="stylesheet" href="styles.css?v=20260829-2">
+  <link rel="stylesheet" href="styles.css?v=20260829-3">
 </head>
 <body>
   <main class="app-shell">
@@ -41,7 +41,20 @@
       <p class="message" id="message" aria-live="polite">点击按钮选择 JDY 蓝牙模块</p>
     </section>
 
-    <section class="card distance-card" aria-labelledby="distanceTitle">
+    <section class="emergency-bar" aria-label="全局安全控制">
+      <button class="emergency-stop control-button" id="emergencyStopButton" data-command="S" type="button" disabled>
+        <span>■</span><strong>紧急停车</strong><small>每个页面均可使用 · S</small>
+      </button>
+    </section>
+
+    <nav class="page-tabs" aria-label="功能页面">
+      <button class="page-tab selected" data-page-target="control" type="button" aria-selected="true">控制</button>
+      <button class="page-tab" data-page-target="sensor" type="button" aria-selected="false">传感</button>
+      <button class="page-tab" data-page-target="tuning" type="button" aria-selected="false">调参</button>
+      <button class="page-tab" data-page-target="feedback" type="button" aria-selected="false">反馈</button>
+    </nav>
+
+    <section class="card distance-card page-card" data-page="sensor" aria-labelledby="distanceTitle" hidden>
       <div>
         <p class="section-kicker">HC-SR04</p>
         <h2 id="distanceTitle">前方距离</h2>
@@ -57,7 +70,7 @@
       </div>
     </section>
 
-    <section class="card deviation-card" aria-labelledby="deviationTitle">
+    <section class="card deviation-card page-card" data-page="feedback" aria-labelledby="deviationTitle" hidden>
       <div class="section-heading compact">
         <div>
           <p class="section-kicker">TRACKING ERROR</p>
@@ -79,7 +92,7 @@
       <div class="deviation-labels"><span>← 偏左</span><strong>居中</strong><span>偏右 →</span></div>
     </section>
 
-    <section class="card" aria-labelledby="controlTitle">
+    <section class="card page-card" data-page="control" aria-labelledby="controlTitle">
       <div class="section-heading compact">
         <h2 id="controlTitle">车辆控制</h2>
         <span class="command-hint">发送 ASCII 命令</span>
@@ -88,16 +101,13 @@
         <button class="button drive forward control-button" data-command="F" type="button" disabled>
           <span>▶</span><strong>开始循迹</strong><small>F</small>
         </button>
-        <button class="button drive stop control-button" data-command="S" type="button" disabled>
-          <span>■</span><strong>紧急停车</strong><small>S</small>
-        </button>
         <button class="button drive reverse control-button" data-command="B" type="button" disabled>
           <span>◀</span><strong>倒车</strong><small>B</small>
         </button>
       </div>
     </section>
 
-    <section class="card" aria-labelledby="speedTitle">
+    <section class="card page-card" data-page="control" aria-labelledby="speedTitle">
       <div class="section-heading compact">
         <h2 id="speedTitle">速度</h2>
         <strong class="speed-readout" id="speedReadout">30%</strong>
@@ -112,7 +122,7 @@
       </div>
     </section>
 
-    <section class="card" aria-labelledby="sensorModeTitle">
+    <section class="card page-card" data-page="sensor" aria-labelledby="sensorModeTitle" hidden>
       <div class="section-heading compact">
         <h2 id="sensorModeTitle">传感器模式</h2>
       </div>
@@ -132,7 +142,7 @@
       </div>
     </section>
 
-    <section class="card parameter-card" aria-labelledby="parameterTitle">
+    <section class="card parameter-card page-card" data-page="tuning" aria-labelledby="parameterTitle" hidden>
       <div class="section-heading">
         <div>
           <p class="section-kicker">RAM RUNTIME TUNING</p>
@@ -152,52 +162,67 @@
       <div class="parameter-list">
         <div class="parameter-row" data-parameter="PID_DEADBAND">
           <div class="parameter-description"><strong>误差死区</strong><span>增大更稳，减小更灵敏</span></div>
-          <div class="parameter-editor"><button data-param-delta="-1" type="button">−</button><input class="parameter-input" data-key="PID_DEADBAND" type="number" min="0" max="500" step="10" value="100" inputmode="numeric"><button data-param-delta="1" type="button">＋</button></div>
+          <div class="parameter-editor"><button data-param-delta="-1" type="button">−</button><input class="parameter-input" data-key="PID_DEADBAND" type="number" min="0" max="500" step="10" value="180" inputmode="numeric"><button data-param-delta="1" type="button">＋</button></div>
           <button class="parameter-apply parameter-action" type="button" disabled>应用</button><span class="parameter-item-state">默认值</span>
         </div>
         <div class="parameter-row" data-parameter="PID_DIVISOR">
           <div class="parameter-description"><strong>P 控制除数</strong><span>减小转向更强，增大更柔和</span></div>
-          <div class="parameter-editor"><button data-param-delta="-1" type="button">−</button><input class="parameter-input" data-key="PID_DIVISOR" type="number" min="20" max="500" step="5" value="100" inputmode="numeric"><button data-param-delta="1" type="button">＋</button></div>
+          <div class="parameter-editor"><button data-param-delta="-1" type="button">−</button><input class="parameter-input" data-key="PID_DIVISOR" type="number" min="20" max="500" step="5" value="180" inputmode="numeric"><button data-param-delta="1" type="button">＋</button></div>
           <button class="parameter-apply parameter-action" type="button" disabled>应用</button><span class="parameter-item-state">默认值</span>
         </div>
         <div class="parameter-row" data-parameter="PID_LIMIT">
           <div class="parameter-description"><strong>最大差速修正</strong><span>增大过弯更强，过大会摆动</span></div>
-          <div class="parameter-editor"><button data-param-delta="-1" type="button">−</button><input class="parameter-input" data-key="PID_LIMIT" type="number" min="0" max="60" step="1" value="20" inputmode="numeric"><button data-param-delta="1" type="button">＋</button></div>
+          <div class="parameter-editor"><button data-param-delta="-1" type="button">−</button><input class="parameter-input" data-key="PID_LIMIT" type="number" min="0" max="60" step="1" value="12" inputmode="numeric"><button data-param-delta="1" type="button">＋</button></div>
+          <button class="parameter-apply parameter-action" type="button" disabled>应用</button><span class="parameter-item-state">默认值</span>
+        </div>
+        <div class="parameter-row" data-parameter="PID_D_GAIN">
+          <div class="parameter-description"><strong>D 平滑强度</strong><span>增大抑制摇头；过大会反应迟钝</span></div>
+          <div class="parameter-editor"><button data-param-delta="-1" type="button">−</button><input class="parameter-input" data-key="PID_D_GAIN" type="number" min="0" max="30" step="1" value="4" inputmode="numeric"><button data-param-delta="1" type="button">＋</button></div>
           <button class="parameter-apply parameter-action" type="button" disabled>应用</button><span class="parameter-item-state">默认值</span>
         </div>
       </div>
 
       <h3 class="parameter-group-title">十字路口参数</h3>
       <div class="parameter-list">
-        <div class="parameter-row" data-parameter="CROSS_ENTER">
-          <div class="parameter-description"><strong>入口增量阈值</strong><span>减小更易识别，过小会误判</span></div>
-          <div class="parameter-editor"><button data-param-delta="-1" type="button">−</button><input class="parameter-input" data-key="CROSS_ENTER" type="number" min="100" max="3000" step="25" value="600" inputmode="numeric"><button data-param-delta="1" type="button">＋</button></div>
+        <div class="parameter-row" data-parameter="CROSS_APPROACH_ERROR">
+          <div class="parameter-description"><strong>接近误差阈值</strong><span>正负两种方向均触发；减小更灵敏</span></div>
+          <div class="parameter-editor"><button data-param-delta="-1" type="button">−</button><input class="parameter-input" data-key="CROSS_APPROACH_ERROR" type="number" min="100" max="3000" step="50" value="900" inputmode="numeric"><button data-param-delta="1" type="button">＋</button></div>
           <button class="parameter-apply parameter-action" type="button" disabled>应用</button><span class="parameter-item-state">默认值</span>
         </div>
-        <div class="parameter-row" data-parameter="CROSS_EXIT">
-          <div class="parameter-description"><strong>出口增量阈值</strong><span>增大更早退出，必须小于入口</span></div>
-          <div class="parameter-editor"><button data-param-delta="-1" type="button">−</button><input class="parameter-input" data-key="CROSS_EXIT" type="number" min="0" max="2000" step="25" value="250" inputmode="numeric"><button data-param-delta="1" type="button">＋</button></div>
+        <div class="parameter-row" data-parameter="CROSS_CENTER_SUM">
+          <div class="parameter-description"><strong>路口中心和值</strong><span>左右和值均超过才确认进入</span></div>
+          <div class="parameter-editor"><button data-param-delta="-1" type="button">−</button><input class="parameter-input" data-key="CROSS_CENTER_SUM" type="number" min="500" max="7000" step="50" value="2700" inputmode="numeric"><button data-param-delta="1" type="button">＋</button></div>
           <button class="parameter-apply parameter-action" type="button" disabled>应用</button><span class="parameter-item-state">默认值</span>
         </div>
-        <div class="parameter-row" data-parameter="CROSS_WINDOW">
-          <div class="parameter-description"><strong>左右触发时间差</strong><span>增大可容忍斜着进入</span></div>
-          <div class="parameter-editor"><button data-param-delta="-1" type="button">−</button><input class="parameter-input" data-key="CROSS_WINDOW" type="number" min="20" max="500" step="10" value="100" inputmode="numeric"><button data-param-delta="1" type="button">＋</button></div>
+        <div class="parameter-row" data-parameter="CROSS_LEAVE_ERROR">
+          <div class="parameter-description"><strong>离开反向误差</strong><span>入口方向相反的误差达到该值才离开</span></div>
+          <div class="parameter-editor"><button data-param-delta="-1" type="button">−</button><input class="parameter-input" data-key="CROSS_LEAVE_ERROR" type="number" min="100" max="3000" step="50" value="900" inputmode="numeric"><button data-param-delta="1" type="button">＋</button></div>
+          <button class="parameter-apply parameter-action" type="button" disabled>应用</button><span class="parameter-item-state">默认值</span>
+        </div>
+        <div class="parameter-row" data-parameter="CROSS_RECOVER_SUM">
+          <div class="parameter-description"><strong>恢复赛道和值</strong><span>左右都低于后恢复循迹；必须小于中心和值</span></div>
+          <div class="parameter-editor"><button data-param-delta="-1" type="button">−</button><input class="parameter-input" data-key="CROSS_RECOVER_SUM" type="number" min="500" max="7000" step="50" value="2500" inputmode="numeric"><button data-param-delta="1" type="button">＋</button></div>
+          <button class="parameter-apply parameter-action" type="button" disabled>应用</button><span class="parameter-item-state">默认值</span>
+        </div>
+        <div class="parameter-row" data-parameter="CROSS_SEQUENCE_MS">
+          <div class="parameter-description"><strong>入口序列时间</strong><span>接近信号后，等待进入中心的最长时间</span></div>
+          <div class="parameter-editor"><button data-param-delta="-1" type="button">−</button><input class="parameter-input" data-key="CROSS_SEQUENCE_MS" type="number" min="100" max="3000" step="100" value="1000" inputmode="numeric"><button data-param-delta="1" type="button">＋</button></div>
           <button class="parameter-apply parameter-action" type="button" disabled>应用</button><span class="parameter-item-state">默认值 · ms</span>
         </div>
         <div class="parameter-row" data-parameter="CROSS_MIN_MS">
           <div class="parameter-description"><strong>最短直行时间</strong><span>增大可通过更宽路口</span></div>
-          <div class="parameter-editor"><button data-param-delta="-1" type="button">−</button><input class="parameter-input" data-key="CROSS_MIN_MS" type="number" min="0" max="2000" step="50" value="200" inputmode="numeric"><button data-param-delta="1" type="button">＋</button></div>
+          <div class="parameter-editor"><button data-param-delta="-1" type="button">−</button><input class="parameter-input" data-key="CROSS_MIN_MS" type="number" min="0" max="2000" step="50" value="300" inputmode="numeric"><button data-param-delta="1" type="button">＋</button></div>
           <button class="parameter-apply parameter-action" type="button" disabled>应用</button><span class="parameter-item-state">默认值 · ms</span>
         </div>
         <div class="parameter-row" data-parameter="CROSS_MAX_MS">
           <div class="parameter-description"><strong>最长直行时间</strong><span>故障时的直行超时保护</span></div>
-          <div class="parameter-editor"><button data-param-delta="-1" type="button">−</button><input class="parameter-input" data-key="CROSS_MAX_MS" type="number" min="200" max="5000" step="100" value="1500" inputmode="numeric"><button data-param-delta="1" type="button">＋</button></div>
+          <div class="parameter-editor"><button data-param-delta="-1" type="button">−</button><input class="parameter-input" data-key="CROSS_MAX_MS" type="number" min="300" max="5000" step="100" value="2200" inputmode="numeric"><button data-param-delta="1" type="button">＋</button></div>
           <button class="parameter-apply parameter-action" type="button" disabled>应用</button><span class="parameter-item-state">默认值 · ms</span>
         </div>
       </div>
     </section>
 
-    <section class="card" aria-labelledby="feedbackTitle">
+    <section class="card page-card" data-page="feedback" aria-labelledby="feedbackTitle" hidden>
       <div class="section-heading compact">
         <h2 id="feedbackTitle">数据反馈</h2>
         <span class="alive-indicator" id="aliveIndicator">等待心跳</span>
@@ -216,11 +241,13 @@
       <div class="crossroad-feedback">
         <div class="data-tile"><span>左增量 LD</span><strong id="ldValue">--</strong></div>
         <div class="data-tile"><span>右增量 RD</span><strong id="rdValue">--</strong></div>
+        <div class="data-tile"><span>左和值 LS</span><strong id="lsValue">--</strong></div>
+        <div class="data-tile"><span>右和值 RS</span><strong id="rsValue">--</strong></div>
         <div class="crossroad-state normal" id="crossroadState"><span>十字路口</span><strong id="crossroadValue">等待数据</strong></div>
       </div>
     </section>
 
-    <section class="card chart-card" aria-labelledby="chartTitle">
+    <section class="card chart-card page-card" data-page="sensor" aria-labelledby="chartTitle" hidden>
       <div class="section-heading compact">
         <div>
           <p class="section-kicker" id="chartRangeLabel">实时 · 最近 60 秒</p>
@@ -248,7 +275,7 @@
       <p class="chart-note" id="chartViewStatus">在曲线上左右滑动，可查看最近30分钟的历史波形。</p>
     </section>
 
-    <section class="card log-card" aria-labelledby="logTitle">
+    <section class="card log-card page-card" data-page="feedback" aria-labelledby="logTitle" hidden>
       <div class="section-heading compact">
         <h2 id="logTitle">通信日志</h2>
         <button class="text-button" id="clearLogButton" type="button">清空</button>
@@ -281,6 +308,6 @@
     </section>
   </div>
 
-  <script src="app.js?v=20260829-2"></script>
+  <script src="app.js?v=20260829-3"></script>
 </body>
 </html>

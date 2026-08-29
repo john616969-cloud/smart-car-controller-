@@ -16,7 +16,8 @@ const ui = {
   obstacleOnButton: $("obstacleOnButton"), obstacleOffButton: $("obstacleOffButton"),
   l1Value: $("l1Value"), l2Value: $("l2Value"), r1Value: $("r1Value"), r2Value: $("r2Value"),
   errorValue: $("errorValue"), mlValue: $("mlValue"), mrValue: $("mrValue"),
-  ldValue: $("ldValue"), rdValue: $("rdValue"), crossroadState: $("crossroadState"), crossroadValue: $("crossroadValue"),
+  ldValue: $("ldValue"), rdValue: $("rdValue"), lsValue: $("lsValue"), rsValue: $("rsValue"),
+  crossroadState: $("crossroadState"), crossroadValue: $("crossroadValue"),
   deviationValue: $("deviationValue"), deviationDirection: $("deviationDirection"), deviationNeedle: $("deviationNeedle"),
   sensorChart: $("sensorChart"), chartSampleCount: $("chartSampleCount"),
   pauseChartButton: $("pauseChartButton"), returnLiveButton: $("returnLiveButton"), clearChartButton: $("clearChartButton"),
@@ -53,14 +54,17 @@ let chartDrag = null;
 const pendingParameterRequests = new Map();
 
 const parameterDefinitions = {
-  PID_DEADBAND: { label: "循迹误差死区", unit: "", min: 0, max: 500, step: 10, defaultValue: 100 },
-  PID_DIVISOR: { label: "P 控制除数", unit: "", min: 20, max: 500, step: 5, defaultValue: 100 },
-  PID_LIMIT: { label: "最大差速修正", unit: "%", min: 0, max: 60, step: 1, defaultValue: 20 },
-  CROSS_ENTER: { label: "十字入口增量阈值", unit: "", min: 100, max: 3000, step: 25, defaultValue: 600 },
-  CROSS_EXIT: { label: "十字出口增量阈值", unit: "", min: 0, max: 2000, step: 25, defaultValue: 250 },
-  CROSS_WINDOW: { label: "左右触发时间差", unit: "ms", min: 20, max: 500, step: 10, defaultValue: 100 },
-  CROSS_MIN_MS: { label: "最短直行时间", unit: "ms", min: 0, max: 2000, step: 50, defaultValue: 200 },
-  CROSS_MAX_MS: { label: "最长直行时间", unit: "ms", min: 200, max: 5000, step: 100, defaultValue: 1500 }
+  PID_DEADBAND: { label: "循迹误差死区", unit: "", min: 0, max: 500, step: 10, defaultValue: 180 },
+  PID_DIVISOR: { label: "P 控制除数", unit: "", min: 20, max: 500, step: 5, defaultValue: 180 },
+  PID_LIMIT: { label: "最大差速修正", unit: "%", min: 0, max: 60, step: 1, defaultValue: 12 },
+  PID_D_GAIN: { label: "D 平滑强度", unit: "", min: 0, max: 30, step: 1, defaultValue: 4 },
+  CROSS_APPROACH_ERROR: { label: "接近误差阈值", unit: "", min: 100, max: 3000, step: 50, defaultValue: 900 },
+  CROSS_CENTER_SUM: { label: "路口中心和值", unit: "", min: 500, max: 7000, step: 50, defaultValue: 2700 },
+  CROSS_LEAVE_ERROR: { label: "离开反向误差", unit: "", min: 100, max: 3000, step: 50, defaultValue: 900 },
+  CROSS_RECOVER_SUM: { label: "恢复赛道和值", unit: "", min: 500, max: 7000, step: 50, defaultValue: 2500 },
+  CROSS_SEQUENCE_MS: { label: "入口序列时间", unit: "ms", min: 100, max: 3000, step: 100, defaultValue: 1000 },
+  CROSS_MIN_MS: { label: "最短直行时间", unit: "ms", min: 0, max: 2000, step: 50, defaultValue: 300 },
+  CROSS_MAX_MS: { label: "最长直行时间", unit: "ms", min: 300, max: 5000, step: 100, defaultValue: 2200 }
 };
 const confirmedParameters = Object.fromEntries(
   Object.entries(parameterDefinitions).map(([key, definition]) => [key, definition.defaultValue])
@@ -75,8 +79,8 @@ const diagnosticState = {
   distance: "--",
   obstacle: "--",
   l1: "--", l2: "--", r1: "--", r2: "--",
-  error: "--", ml: "--", mr: "--", ld: "--", rd: "--",
-  crossroad: "等待数据", crossroadCode: "--"
+  error: "--", ml: "--", mr: "--", ld: "--", rd: "--", ls: "--", rs: "--",
+  crossroad: "等待数据", crossroadCode: "--", crossroadPhase: "NORMAL", crossroadDirection: "NONE"
 };
 
 const chartSeries = {
@@ -243,13 +247,13 @@ function validateParameterValues(showErrors = true) {
     values[key] = value;
   });
 
-  if (valid && values.CROSS_EXIT >= values.CROSS_ENTER) {
+  if (valid && values.CROSS_RECOVER_SUM >= values.CROSS_CENTER_SUM) {
     valid = false;
-    getParameterInput("CROSS_ENTER").classList.add("invalid");
-    getParameterInput("CROSS_EXIT").classList.add("invalid");
+    getParameterInput("CROSS_CENTER_SUM").classList.add("invalid");
+    getParameterInput("CROSS_RECOVER_SUM").classList.add("invalid");
     if (showErrors) {
-      setParameterRowState("CROSS_ENTER", "入口阈值必须大于出口阈值", "error");
-      setParameterRowState("CROSS_EXIT", "出口阈值必须小于入口阈值", "error");
+      setParameterRowState("CROSS_CENTER_SUM", "中心和值必须大于恢复和值", "error");
+      setParameterRowState("CROSS_RECOVER_SUM", "恢复和值必须小于中心和值", "error");
     }
   }
   if (valid && values.CROSS_MAX_MS <= values.CROSS_MIN_MS) {
@@ -344,9 +348,10 @@ async function applyAllParameters() {
   ui.parameterSyncState.textContent = "正在依次写入…";
   ui.parameterSyncState.className = "parameter-sync-state";
 
-  const order = ["PID_DEADBAND", "PID_DIVISOR", "PID_LIMIT", "CROSS_WINDOW"];
-  if (result.values.CROSS_ENTER <= confirmedParameters.CROSS_EXIT) order.push("CROSS_EXIT", "CROSS_ENTER");
-  else order.push("CROSS_ENTER", "CROSS_EXIT");
+  const order = ["PID_DEADBAND", "PID_DIVISOR", "PID_LIMIT", "PID_D_GAIN",
+    "CROSS_APPROACH_ERROR", "CROSS_LEAVE_ERROR", "CROSS_SEQUENCE_MS"];
+  if (result.values.CROSS_CENTER_SUM <= confirmedParameters.CROSS_RECOVER_SUM) order.push("CROSS_RECOVER_SUM", "CROSS_CENTER_SUM");
+  else order.push("CROSS_CENTER_SUM", "CROSS_RECOVER_SUM");
   if (result.values.CROSS_MAX_MS <= confirmedParameters.CROSS_MIN_MS) order.push("CROSS_MIN_MS", "CROSS_MAX_MS");
   else order.push("CROSS_MAX_MS", "CROSS_MIN_MS");
 
@@ -357,7 +362,7 @@ async function applyAllParameters() {
   ui.applyAllParametersButton.disabled = !diagnosticState.connected;
   ui.parameterSyncState.textContent = allSucceeded ? "全部参数已生效" : "部分参数未生效";
   ui.parameterSyncState.className = `parameter-sync-state ${allSucceeded ? "synced" : "error"}`;
-  setMessage(allSucceeded ? "8 个参数已全部写入芯片" : "写入中断，请检查红色提示", !allSucceeded);
+  setMessage(allSucceeded ? "11 个参数已全部写入芯片" : "写入中断，请检查红色提示", !allSucceeded);
 }
 
 function handleNotification(event) {
@@ -397,15 +402,24 @@ function processLine(line) {
       diagnosticState.error, diagnosticState.ml, diagnosticState.mr] = values;
     const ldMatch = line.match(/\bLD\s*=\s*(-?\d+)/i);
     const rdMatch = line.match(/\bRD\s*=\s*(-?\d+)/i);
+    const lsMatch = line.match(/\bLS\s*=\s*(\d+)/i);
+    const rsMatch = line.match(/\bRS\s*=\s*(\d+)/i);
     const crossMatch = line.match(/\bCROSS\s*=\s*([01])/i);
+    const phaseMatch = line.match(/\bPHASE\s*=\s*(NORMAL|APPROACH|CROSS|LEAVING)/i);
+    const directionMatch = line.match(/\bDIR\s*=\s*(NONE|RIGHT_FIRST|LEFT_FIRST)/i);
     if (ldMatch) { ui.ldValue.textContent = ldMatch[1]; diagnosticState.ld = Number(ldMatch[1]); }
     if (rdMatch) { ui.rdValue.textContent = rdMatch[1]; diagnosticState.rd = Number(rdMatch[1]); }
-    if (crossMatch) updateCrossroad(crossMatch[1] === "1" ? "ACTIVE" : "NORMAL");
+    if (lsMatch) { ui.lsValue.textContent = lsMatch[1]; diagnosticState.ls = Number(lsMatch[1]); }
+    if (rsMatch) { ui.rsValue.textContent = rsMatch[1]; diagnosticState.rs = Number(rsMatch[1]); }
+    if (phaseMatch) updateCrossroad(phaseMatch[1].toUpperCase(), directionMatch ? directionMatch[1].toUpperCase() : diagnosticState.crossroadDirection);
+    else if (crossMatch) updateCrossroad(crossMatch[1] === "1" ? "CROSS" : "NORMAL");
     updateDeviation(values[4]);
     recordSensorSample({
       time: Date.now(), l1: values[0], l2: values[1], r1: values[2], r2: values[3], error: values[4],
       ld: ldMatch ? Number(ldMatch[1]) : "", rd: rdMatch ? Number(rdMatch[1]) : "",
-      cross: crossMatch ? Number(crossMatch[1]) : ""
+      ls: lsMatch ? Number(lsMatch[1]) : "", rs: rsMatch ? Number(rsMatch[1]) : "",
+      cross: crossMatch ? Number(crossMatch[1]) : "", phase: phaseMatch ? phaseMatch[1].toUpperCase() : "",
+      direction: directionMatch ? directionMatch[1].toUpperCase() : ""
     });
   }
 
@@ -418,17 +432,24 @@ function processLine(line) {
   if (avoidanceMatch) selectMode(ui.obstacleOnButton, ui.obstacleOffButton, avoidanceMatch[1].toUpperCase() === "ON");
   if (sensorModeMatch) selectMode(ui.sensorOnButton, ui.sensorOffButton, sensorModeMatch[1].toUpperCase() === "ON");
 
-  if (/CROSSROAD\s+ENTER/i.test(line)) updateCrossroad("ACTIVE");
+  const approachEvent = line.match(/CROSSROAD\s+APPROACH\s+(RIGHT_FIRST|LEFT_FIRST)/i);
+  if (approachEvent) updateCrossroad("APPROACH", approachEvent[1].toUpperCase());
+  else if (/CROSSROAD\s+ENTER/i.test(line)) updateCrossroad("CROSS", diagnosticState.crossroadDirection);
+  else if (/CROSSROAD\s+LEAVING/i.test(line)) updateCrossroad("LEAVING", diagnosticState.crossroadDirection);
   else if (/CROSSROAD\s+TIMEOUT/i.test(line)) updateCrossroad("TIMEOUT");
   else if (/CROSSROAD\s+EXIT/i.test(line)) updateCrossroad("NORMAL");
+  else if (/CROSSROAD\s+CANCEL/i.test(line)) updateCrossroad("NORMAL");
 
   if (/CAR\s+ALIVE/i.test(line)) markAlive();
 }
 
-function updateCrossroad(state) {
+function updateCrossroad(state, direction = "NONE") {
+  const directionText = direction === "RIGHT_FIRST" ? "右侧先变化" : direction === "LEFT_FIRST" ? "左侧先变化" : "";
   const states = {
     NORMAL: { text: "正常循迹", code: 0, className: "normal" },
-    ACTIVE: { text: "十字路口直行", code: 1, className: "active" },
+    APPROACH: { text: `接近十字路口${directionText ? " · " + directionText : ""}`, code: 0, className: "approach" },
+    CROSS: { text: `十字路口直行${directionText ? " · " + directionText : ""}`, code: 1, className: "active" },
+    LEAVING: { text: `正在离开十字路口${directionText ? " · " + directionText : ""}`, code: 1, className: "active" },
     TIMEOUT: { text: "十字路口超时保护", code: "TIMEOUT", className: "timeout" }
   };
   const selected = states[state] || states.NORMAL;
@@ -436,6 +457,8 @@ function updateCrossroad(state) {
   ui.crossroadValue.textContent = selected.text;
   diagnosticState.crossroad = selected.text;
   diagnosticState.crossroadCode = selected.code;
+  diagnosticState.crossroadPhase = state === "TIMEOUT" ? "TIMEOUT" : state;
+  diagnosticState.crossroadDirection = state === "NORMAL" || state === "TIMEOUT" ? "NONE" : direction;
 }
 
 function updateDistance(value) {
@@ -634,11 +657,12 @@ function downloadBlob(blob, filename) {
 function exportSensorCsv() {
   if (!sensorHistory.length) return;
   const firstTime = sensorHistory[0].time;
-  const rows = ["时间,相对秒,L1,L2,R1,R2,ERROR,LD,RD,CROSS"];
+  const rows = ["时间,相对秒,L1,L2,R1,R2,ERROR,LD,RD,LS,RS,CROSS,PHASE,DIR"];
   sensorHistory.forEach((point) => {
     rows.push([
       new Date(point.time).toISOString(), ((point.time - firstTime) / 1000).toFixed(3),
-      point.l1, point.l2, point.r1, point.r2, point.error, point.ld, point.rd, point.cross
+      point.l1, point.l2, point.r1, point.r2, point.error, point.ld, point.rd,
+      point.ls, point.rs, point.cross, point.phase, point.direction
     ].join(","));
   });
   const blob = new Blob(["\uFEFF" + rows.join("\r\n")], { type: "text/csv;charset=utf-8" });
@@ -715,7 +739,9 @@ function buildParameterReport() {
     `L1=${diagnosticState.l1}`, `L2=${diagnosticState.l2}`,
     `R1=${diagnosticState.r1}`, `R2=${diagnosticState.r2}`,
     `ERROR=${diagnosticState.error}`, `LD=${diagnosticState.ld}`, `RD=${diagnosticState.rd}`,
+    `LS=${diagnosticState.ls}`, `RS=${diagnosticState.rs}`,
     `CROSS=${diagnosticState.crossroadCode} (${diagnosticState.crossroad})`,
+    `PHASE=${diagnosticState.crossroadPhase}`, `DIR=${diagnosticState.crossroadDirection}`,
     `距离=${diagnosticState.distance}`, `障碍状态=${diagnosticState.obstacle}`,
     "", "END OF PARAMETERS"
   );
@@ -755,6 +781,8 @@ function buildDiagnosticReport() {
     `距离=${diagnosticState.distance}${/^\d+$/.test(String(diagnosticState.distance)) ? "cm" : ""}`,
     `障碍状态=${diagnosticState.obstacle}`,
     `十字路口=${diagnosticState.crossroad}`,
+    `十字阶段=${diagnosticState.crossroadPhase}`,
+    `入口方向=${diagnosticState.crossroadDirection}`,
     "",
     "[当前传感器与电机]",
     `L1=${diagnosticState.l1}`,
@@ -764,6 +792,8 @@ function buildDiagnosticReport() {
     `ERROR=${diagnosticState.error}`,
     `LD=${diagnosticState.ld}`,
     `RD=${diagnosticState.rd}`,
+    `LS=${diagnosticState.ls}`,
+    `RS=${diagnosticState.rs}`,
     `ML=${diagnosticState.ml}`,
     `MR=${diagnosticState.mr}`,
     "",
@@ -771,14 +801,15 @@ function buildDiagnosticReport() {
     ...Object.entries(parameterDefinitions).map(([key, definition]) => `${key}=${confirmedParameters[key]}${definition.unit ? " " + definition.unit : ""}`),
     "",
     `[传感器历史数据，共${sensorHistory.length}条]`,
-    "时间,相对秒,L1,L2,R1,R2,ERROR,LD,RD,CROSS"
+    "时间,相对秒,L1,L2,R1,R2,ERROR,LD,RD,LS,RS,CROSS,PHASE,DIR"
   ];
 
   const firstTime = sensorHistory.length ? sensorHistory[0].time : 0;
   sensorHistory.forEach((point) => {
     lines.push([
       new Date(point.time).toISOString(), ((point.time - firstTime) / 1000).toFixed(3),
-      point.l1, point.l2, point.r1, point.r2, point.error, point.ld, point.rd, point.cross
+      point.l1, point.l2, point.r1, point.r2, point.error, point.ld, point.rd,
+      point.ls, point.rs, point.cross, point.phase, point.direction
     ].join(","));
   });
 
@@ -874,8 +905,26 @@ function selectMode(onButton, offButton, enabled) {
   if (onButton === ui.obstacleOnButton) diagnosticState.obstacleEnabled = enabled;
 }
 
+/* 四个主页面只切换显示内容；蓝牙连接和顶部急停始终保留。 */
+function selectPage(pageName) {
+  document.querySelectorAll(".page-tab").forEach((button) => {
+    const selected = button.dataset.pageTarget === pageName;
+    button.classList.toggle("selected", selected);
+    button.setAttribute("aria-selected", selected ? "true" : "false");
+  });
+  document.querySelectorAll(".page-card").forEach((card) => {
+    card.hidden = card.dataset.page !== pageName;
+  });
+  if (pageName === "sensor") scheduleChartDraw();
+  window.scrollTo({ top: 0, behavior: "smooth" });
+}
+
 ui.connectButton.addEventListener("click", connectBluetooth);
 ui.disconnectButton.addEventListener("click", disconnectBluetooth);
+
+document.querySelectorAll(".page-tab").forEach((button) => {
+  button.addEventListener("click", () => selectPage(button.dataset.pageTarget));
+});
 
 document.querySelectorAll(".control-button").forEach((button) => {
   button.addEventListener("click", async () => {
