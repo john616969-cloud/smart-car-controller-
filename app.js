@@ -16,15 +16,19 @@ const ui = {
   obstacleOnButton: $("obstacleOnButton"), obstacleOffButton: $("obstacleOffButton"),
   l1Value: $("l1Value"), l2Value: $("l2Value"), r1Value: $("r1Value"), r2Value: $("r2Value"),
   errorValue: $("errorValue"), mlValue: $("mlValue"), mrValue: $("mrValue"),
+  ldValue: $("ldValue"), rdValue: $("rdValue"), crossroadState: $("crossroadState"), crossroadValue: $("crossroadValue"),
   deviationValue: $("deviationValue"), deviationDirection: $("deviationDirection"), deviationNeedle: $("deviationNeedle"),
   sensorChart: $("sensorChart"), chartSampleCount: $("chartSampleCount"),
-  pauseChartButton: $("pauseChartButton"), clearChartButton: $("clearChartButton"),
+  pauseChartButton: $("pauseChartButton"), returnLiveButton: $("returnLiveButton"), clearChartButton: $("clearChartButton"),
+  chartRangeLabel: $("chartRangeLabel"), chartViewStatus: $("chartViewStatus"),
   exportCsvButton: $("exportCsvButton"), exportPngButton: $("exportPngButton"),
   exportReportButton: $("exportReportButton"), exportModal: $("exportModal"),
   exportModalTitle: $("exportModalTitle"), exportHelp: $("exportHelp"),
   exportImage: $("exportImage"), exportText: $("exportText"),
   shareExportButton: $("shareExportButton"), copyExportButton: $("copyExportButton"),
-  downloadExportButton: $("downloadExportButton"),
+  downloadExportButton: $("downloadExportButton"), parameterSyncState: $("parameterSyncState"),
+  readParametersButton: $("readParametersButton"), applyAllParametersButton: $("applyAllParametersButton"),
+  exportParametersButton: $("exportParametersButton"),
   aliveIndicator: $("aliveIndicator"), logWindow: $("logWindow"), clearLogButton: $("clearLogButton")
 };
 
@@ -38,12 +42,29 @@ const DEVIATION_LIMIT = 4000;
 const DEVIATION_CENTER_BAND = 100;
 const CHART_WINDOW_MS = 60 * 1000;
 const CHART_HISTORY_MS = 30 * 60 * 1000;
+const BLE_CHUNK_SIZE = 20;
 const sensorHistory = [];
 const diagnosticLogs = [];
 let chartPaused = false;
 let chartPausedAt = 0;
 let chartDrawPending = false;
 let activeExport = null;
+let chartDrag = null;
+const pendingParameterRequests = new Map();
+
+const parameterDefinitions = {
+  PID_DEADBAND: { label: "循迹误差死区", unit: "", min: 0, max: 500, step: 10, defaultValue: 100 },
+  PID_DIVISOR: { label: "P 控制除数", unit: "", min: 20, max: 500, step: 5, defaultValue: 100 },
+  PID_LIMIT: { label: "最大差速修正", unit: "%", min: 0, max: 60, step: 1, defaultValue: 20 },
+  CROSS_ENTER: { label: "十字入口增量阈值", unit: "", min: 100, max: 3000, step: 25, defaultValue: 600 },
+  CROSS_EXIT: { label: "十字出口增量阈值", unit: "", min: 0, max: 2000, step: 25, defaultValue: 250 },
+  CROSS_WINDOW: { label: "左右触发时间差", unit: "ms", min: 20, max: 500, step: 10, defaultValue: 100 },
+  CROSS_MIN_MS: { label: "最短直行时间", unit: "ms", min: 0, max: 2000, step: 50, defaultValue: 200 },
+  CROSS_MAX_MS: { label: "最长直行时间", unit: "ms", min: 200, max: 5000, step: 100, defaultValue: 1500 }
+};
+const confirmedParameters = Object.fromEntries(
+  Object.entries(parameterDefinitions).map(([key, definition]) => [key, definition.defaultValue])
+);
 
 const diagnosticState = {
   connected: false,
@@ -54,7 +75,8 @@ const diagnosticState = {
   distance: "--",
   obstacle: "--",
   l1: "--", l2: "--", r1: "--", r2: "--",
-  error: "--", ml: "--", mr: "--"
+  error: "--", ml: "--", mr: "--", ld: "--", rd: "--",
+  crossroad: "等待数据", crossroadCode: "--"
 };
 
 const chartSeries = {
@@ -77,6 +99,10 @@ function setConnected(connected) {
   ui.disconnectButton.disabled = !connected;
   document.querySelectorAll(".control-button, #speedSlider, #speedPresets button")
     .forEach((element) => { element.disabled = !connected; });
+  document.querySelectorAll(".parameter-action")
+    .forEach((element) => { element.disabled = !connected; });
+  ui.parameterSyncState.textContent = connected ? "等待读取" : "等待连接";
+  ui.parameterSyncState.className = "parameter-sync-state";
 }
 
 function addLog(text, kind = "rx") {
@@ -128,6 +154,7 @@ async function connectBluetooth() {
     setConnected(true);
     setMessage("连接成功，可以控制小车");
     addLog("已连接 " + (bluetoothDevice.name || "未命名设备"));
+    setTimeout(requestParameters, 150);
   } catch (error) {
     if (error.name === "NotFoundError") {
       setMessage("已取消选择蓝牙设备");
@@ -151,6 +178,8 @@ function disconnectBluetooth() {
 function handleDisconnected() {
   uartCharacteristic = null;
   receiveBuffer = "";
+  pendingParameterRequests.forEach((pending) => { clearTimeout(pending.timer); pending.resolve(false); });
+  pendingParameterRequests.clear();
   setConnected(false);
   setMessage("蓝牙已断开");
   addLog("蓝牙已断开", "error");
@@ -164,23 +193,171 @@ async function sendCommand(command) {
 
   try {
     const data = encoder.encode(command);
-    if (uartCharacteristic.properties.write && uartCharacteristic.writeValueWithResponse) {
-      await uartCharacteristic.writeValueWithResponse(data);
-    } else if (uartCharacteristic.properties.writeWithoutResponse && uartCharacteristic.writeValueWithoutResponse) {
-      await uartCharacteristic.writeValueWithoutResponse(data);
-    } else if (uartCharacteristic.writeValue) {
-      await uartCharacteristic.writeValue(data);
-    } else {
-      throw new Error("FFE1 不支持写入");
+    for (let offset = 0; offset < data.length; offset += BLE_CHUNK_SIZE) {
+      const chunk = data.slice(offset, offset + BLE_CHUNK_SIZE);
+      if (uartCharacteristic.properties.write && uartCharacteristic.writeValueWithResponse) {
+        await uartCharacteristic.writeValueWithResponse(chunk);
+      } else if (uartCharacteristic.properties.writeWithoutResponse && uartCharacteristic.writeValueWithoutResponse) {
+        await uartCharacteristic.writeValueWithoutResponse(chunk);
+      } else if (uartCharacteristic.writeValue) {
+        await uartCharacteristic.writeValue(chunk);
+      } else {
+        throw new Error("FFE1 不支持写入");
+      }
     }
-    addLog(command, "tx");
-    setMessage("命令 " + command + " 已发送");
+    const displayCommand = String(command).trim();
+    addLog(displayCommand, "tx");
+    setMessage("命令 " + displayCommand + " 已发送");
     return true;
   } catch (error) {
     setMessage("发送失败：" + error.message, true);
     addLog(error.message, "error");
     return false;
   }
+}
+
+function getParameterInput(key) {
+  return document.querySelector(`.parameter-input[data-key="${key}"]`);
+}
+
+function setParameterRowState(key, text, kind = "") {
+  const row = document.querySelector(`.parameter-row[data-parameter="${key}"]`);
+  if (!row) return;
+  const state = row.querySelector(".parameter-item-state");
+  state.textContent = text;
+  state.className = `parameter-item-state ${kind}`.trim();
+}
+
+function validateParameterValues(showErrors = true) {
+  const values = {};
+  let valid = true;
+  Object.entries(parameterDefinitions).forEach(([key, definition]) => {
+    const input = getParameterInput(key);
+    const value = Number(input.value);
+    const itemValid = Number.isInteger(value) && value >= definition.min && value <= definition.max;
+    input.classList.toggle("invalid", !itemValid);
+    if (!itemValid) {
+      valid = false;
+      if (showErrors) setParameterRowState(key, `范围应为 ${definition.min}～${definition.max}`, "error");
+    }
+    values[key] = value;
+  });
+
+  if (valid && values.CROSS_EXIT >= values.CROSS_ENTER) {
+    valid = false;
+    getParameterInput("CROSS_ENTER").classList.add("invalid");
+    getParameterInput("CROSS_EXIT").classList.add("invalid");
+    if (showErrors) {
+      setParameterRowState("CROSS_ENTER", "入口阈值必须大于出口阈值", "error");
+      setParameterRowState("CROSS_EXIT", "出口阈值必须小于入口阈值", "error");
+    }
+  }
+  if (valid && values.CROSS_MAX_MS <= values.CROSS_MIN_MS) {
+    valid = false;
+    getParameterInput("CROSS_MIN_MS").classList.add("invalid");
+    getParameterInput("CROSS_MAX_MS").classList.add("invalid");
+    if (showErrors) {
+      setParameterRowState("CROSS_MIN_MS", "最短时间必须小于最长时间", "error");
+      setParameterRowState("CROSS_MAX_MS", "最长时间必须大于最短时间", "error");
+    }
+  }
+  return { valid, values };
+}
+
+function handleParameterValue(key, value) {
+  if (!parameterDefinitions[key]) return;
+  confirmedParameters[key] = value;
+  const input = getParameterInput(key);
+  input.value = String(value);
+  input.classList.remove("invalid");
+  setParameterRowState(key, "已与芯片同步", "success");
+  const pending = pendingParameterRequests.get(key);
+  if (pending) {
+    clearTimeout(pending.timer);
+    pendingParameterRequests.delete(key);
+    pending.resolve(true);
+  }
+}
+
+function handleParameterError(key, reason) {
+  const labels = { RANGE: "数值超出范围", RELATION: "与另一参数关系不正确", FORMAT: "命令格式错误", UNKNOWN: "参数名未知" };
+  const targetKey = parameterDefinitions[key] ? key : pendingParameterRequests.keys().next().value;
+  const pending = targetKey ? pendingParameterRequests.get(targetKey) : null;
+  if (targetKey && parameterDefinitions[targetKey]) {
+    getParameterInput(targetKey).value = String(confirmedParameters[targetKey]);
+    setParameterRowState(targetKey, labels[reason] || reason, "error");
+  }
+  ui.parameterSyncState.textContent = "芯片拒绝了参数";
+  ui.parameterSyncState.className = "parameter-sync-state error";
+  if (pending) {
+    clearTimeout(pending.timer);
+    pendingParameterRequests.delete(targetKey);
+    pending.resolve(false);
+  }
+}
+
+async function requestParameters() {
+  if (!diagnosticState.connected) return;
+  ui.parameterSyncState.textContent = "正在读取…";
+  ui.parameterSyncState.className = "parameter-sync-state";
+  await sendCommand("@GET PARAMS\n");
+}
+
+async function sendParameterAndWait(key, value) {
+  if (pendingParameterRequests.has(key)) return false;
+  setParameterRowState(key, "正在写入…", "pending");
+  return new Promise(async (resolve) => {
+    const timer = setTimeout(() => {
+      pendingParameterRequests.delete(key);
+      setParameterRowState(key, "等待芯片回复超时", "error");
+      resolve(false);
+    }, 2200);
+    pendingParameterRequests.set(key, { resolve, timer });
+    const sent = await sendCommand(`@SET ${key} ${value}\n`);
+    if (!sent) {
+      clearTimeout(timer);
+      pendingParameterRequests.delete(key);
+      setParameterRowState(key, "发送失败", "error");
+      resolve(false);
+    }
+  });
+}
+
+async function applyParameter(key) {
+  const result = validateParameterValues(true);
+  if (!result.valid) {
+    setMessage("请先修正红色参数", true);
+    return false;
+  }
+  const success = await sendParameterAndWait(key, result.values[key]);
+  if (success) setMessage(`${parameterDefinitions[key].label} 已生效`);
+  return success;
+}
+
+async function applyAllParameters() {
+  const result = validateParameterValues(true);
+  if (!result.valid) {
+    setMessage("请先修正红色参数", true);
+    return;
+  }
+  ui.applyAllParametersButton.disabled = true;
+  ui.parameterSyncState.textContent = "正在依次写入…";
+  ui.parameterSyncState.className = "parameter-sync-state";
+
+  const order = ["PID_DEADBAND", "PID_DIVISOR", "PID_LIMIT", "CROSS_WINDOW"];
+  if (result.values.CROSS_ENTER <= confirmedParameters.CROSS_EXIT) order.push("CROSS_EXIT", "CROSS_ENTER");
+  else order.push("CROSS_ENTER", "CROSS_EXIT");
+  if (result.values.CROSS_MAX_MS <= confirmedParameters.CROSS_MIN_MS) order.push("CROSS_MIN_MS", "CROSS_MAX_MS");
+  else order.push("CROSS_MAX_MS", "CROSS_MIN_MS");
+
+  let allSucceeded = true;
+  for (const key of order) {
+    if (!await sendParameterAndWait(key, result.values[key])) { allSucceeded = false; break; }
+  }
+  ui.applyAllParametersButton.disabled = !diagnosticState.connected;
+  ui.parameterSyncState.textContent = allSucceeded ? "全部参数已生效" : "部分参数未生效";
+  ui.parameterSyncState.className = `parameter-sync-state ${allSucceeded ? "synced" : "error"}`;
+  setMessage(allSucceeded ? "8 个参数已全部写入芯片" : "写入中断，请检查红色提示", !allSucceeded);
 }
 
 function handleNotification(event) {
@@ -202,6 +379,15 @@ function processLine(line) {
   if (!line) return;
   addLog(line);
 
+  const parameterValueMatch = line.match(/^PARAM\s+([A-Z0-9_]+)\s*=\s*(\d+)(?:\s+OK)?$/i);
+  const parameterErrorMatch = line.match(/^PARAM\s+([A-Z0-9_]+)\s+ERROR\s+([A-Z]+)$/i);
+  if (parameterValueMatch) handleParameterValue(parameterValueMatch[1].toUpperCase(), Number(parameterValueMatch[2]));
+  if (parameterErrorMatch) handleParameterError(parameterErrorMatch[1].toUpperCase(), parameterErrorMatch[2].toUpperCase());
+  if (/^PARAMS\s+END$/i.test(line)) {
+    ui.parameterSyncState.textContent = "已与芯片同步";
+    ui.parameterSyncState.className = "parameter-sync-state synced";
+  }
+
   const sensorMatch = line.match(/L1\s*=\s*(\d+).*?L2\s*=\s*(\d+).*?R1\s*=\s*(\d+).*?R2\s*=\s*(\d+).*?ERROR\s*=\s*(-?\d+).*?ML\s*=\s*(\d+).*?MR\s*=\s*(\d+)/i);
   if (sensorMatch) {
     const values = sensorMatch.slice(1).map(Number);
@@ -209,9 +395,17 @@ function processLine(line) {
       ui.errorValue.textContent, ui.mlValue.textContent, ui.mrValue.textContent] = values.map(String);
     [diagnosticState.l1, diagnosticState.l2, diagnosticState.r1, diagnosticState.r2,
       diagnosticState.error, diagnosticState.ml, diagnosticState.mr] = values;
+    const ldMatch = line.match(/\bLD\s*=\s*(-?\d+)/i);
+    const rdMatch = line.match(/\bRD\s*=\s*(-?\d+)/i);
+    const crossMatch = line.match(/\bCROSS\s*=\s*([01])/i);
+    if (ldMatch) { ui.ldValue.textContent = ldMatch[1]; diagnosticState.ld = Number(ldMatch[1]); }
+    if (rdMatch) { ui.rdValue.textContent = rdMatch[1]; diagnosticState.rd = Number(rdMatch[1]); }
+    if (crossMatch) updateCrossroad(crossMatch[1] === "1" ? "ACTIVE" : "NORMAL");
     updateDeviation(values[4]);
     recordSensorSample({
-      time: Date.now(), l1: values[0], l2: values[1], r1: values[2], r2: values[3], error: values[4]
+      time: Date.now(), l1: values[0], l2: values[1], r1: values[2], r2: values[3], error: values[4],
+      ld: ldMatch ? Number(ldMatch[1]) : "", rd: rdMatch ? Number(rdMatch[1]) : "",
+      cross: crossMatch ? Number(crossMatch[1]) : ""
     });
   }
 
@@ -224,7 +418,24 @@ function processLine(line) {
   if (avoidanceMatch) selectMode(ui.obstacleOnButton, ui.obstacleOffButton, avoidanceMatch[1].toUpperCase() === "ON");
   if (sensorModeMatch) selectMode(ui.sensorOnButton, ui.sensorOffButton, sensorModeMatch[1].toUpperCase() === "ON");
 
+  if (/CROSSROAD\s+ENTER/i.test(line)) updateCrossroad("ACTIVE");
+  else if (/CROSSROAD\s+TIMEOUT/i.test(line)) updateCrossroad("TIMEOUT");
+  else if (/CROSSROAD\s+EXIT/i.test(line)) updateCrossroad("NORMAL");
+
   if (/CAR\s+ALIVE/i.test(line)) markAlive();
+}
+
+function updateCrossroad(state) {
+  const states = {
+    NORMAL: { text: "正常循迹", code: 0, className: "normal" },
+    ACTIVE: { text: "十字路口直行", code: 1, className: "active" },
+    TIMEOUT: { text: "十字路口超时保护", code: "TIMEOUT", className: "timeout" }
+  };
+  const selected = states[state] || states.NORMAL;
+  ui.crossroadState.className = `crossroad-state ${selected.className}`;
+  ui.crossroadValue.textContent = selected.text;
+  diagnosticState.crossroad = selected.text;
+  diagnosticState.crossroadCode = selected.code;
 }
 
 function updateDistance(value) {
@@ -283,6 +494,39 @@ function updateChartControls() {
   ui.chartSampleCount.textContent = `${sensorHistory.length} 点`;
   ui.exportCsvButton.disabled = !hasData;
   ui.exportPngButton.disabled = !hasData;
+  ui.returnLiveButton.disabled = !chartPaused;
+  updateChartViewLabels();
+}
+
+function clampChartEnd(value) {
+  if (!sensorHistory.length) return Date.now();
+  const first = sensorHistory[0].time;
+  const last = sensorHistory[sensorHistory.length - 1].time;
+  const earliestEnd = Math.min(last, first + CHART_WINDOW_MS);
+  return Math.max(earliestEnd, Math.min(last, value));
+}
+
+function updateChartViewLabels() {
+  if (!chartPaused) {
+    ui.chartRangeLabel.textContent = "实时 · 最近 60 秒";
+    ui.chartViewStatus.textContent = "在曲线上左右滑动，可查看最近30分钟的历史波形。";
+    ui.pauseChartButton.textContent = "暂停";
+    return;
+  }
+  chartPausedAt = clampChartEnd(chartPausedAt);
+  const delaySeconds = sensorHistory.length ? Math.max(0, Math.round((sensorHistory[sensorHistory.length - 1].time - chartPausedAt) / 1000)) : 0;
+  const startText = new Date(chartPausedAt - CHART_WINDOW_MS).toLocaleTimeString("zh-CN", { hour12: false });
+  const endText = new Date(chartPausedAt).toLocaleTimeString("zh-CN", { hour12: false });
+  ui.chartRangeLabel.textContent = `历史 · ${startText}—${endText}`;
+  ui.chartViewStatus.textContent = delaySeconds > 0 ? `正在查看历史，距最新数据约 ${delaySeconds} 秒。` : "画面已暂停，新数据仍在后台保存。";
+  ui.pauseChartButton.textContent = "继续";
+}
+
+function returnChartToLive() {
+  chartPaused = false;
+  chartPausedAt = 0;
+  updateChartControls();
+  scheduleChartDraw();
 }
 
 function scheduleChartDraw() {
@@ -314,7 +558,7 @@ function drawSensorChart() {
   const plot = { left: 43, right: 12, top: 15, bottom: 28 };
   const plotWidth = width - plot.left - plot.right;
   const plotHeight = height - plot.top - plot.bottom;
-  const windowEnd = chartPaused ? chartPausedAt : Date.now();
+  const windowEnd = chartPaused ? clampChartEnd(chartPausedAt) : Date.now();
   const windowStart = windowEnd - CHART_WINDOW_MS;
 
   ctx.fillStyle = "#030a12";
@@ -332,13 +576,14 @@ function drawSensorChart() {
     ctx.fillText(String(value), plot.left - 6, y);
   });
 
-  [60, 45, 30, 15, 0].forEach((secondsAgo, index) => {
+  [0, 1, 2, 3, 4].forEach((tick, index) => {
     const x = plot.left + (index / 4) * plotWidth;
+    const tickTime = windowStart + (tick / 4) * CHART_WINDOW_MS;
     ctx.strokeStyle = "rgba(80,116,150,.16)";
     ctx.beginPath(); ctx.moveTo(x, plot.top); ctx.lineTo(x, height - plot.bottom); ctx.stroke();
     ctx.fillStyle = "#667b91";
     ctx.textAlign = index === 0 ? "left" : index === 4 ? "right" : "center";
-    ctx.fillText(secondsAgo === 0 ? "现在" : `-${secondsAgo}s`, x, height - 12);
+    ctx.fillText(new Date(tickTime).toLocaleTimeString("zh-CN", { hour12: false, minute: "2-digit", second: "2-digit" }), x, height - 12);
   });
 
   const visible = sensorHistory.filter((point) => point.time >= windowStart && point.time <= windowEnd);
@@ -389,11 +634,11 @@ function downloadBlob(blob, filename) {
 function exportSensorCsv() {
   if (!sensorHistory.length) return;
   const firstTime = sensorHistory[0].time;
-  const rows = ["时间,相对秒,L1,L2,R1,R2,ERROR"];
+  const rows = ["时间,相对秒,L1,L2,R1,R2,ERROR,LD,RD,CROSS"];
   sensorHistory.forEach((point) => {
     rows.push([
       new Date(point.time).toISOString(), ((point.time - firstTime) / 1000).toFixed(3),
-      point.l1, point.l2, point.r1, point.r2, point.error
+      point.l1, point.l2, point.r1, point.r2, point.error, point.ld, point.rd, point.cross
     ].join(","));
   });
   const blob = new Blob(["\uFEFF" + rows.join("\r\n")], { type: "text/csv;charset=utf-8" });
@@ -450,6 +695,45 @@ function openSensorImage() {
   }
 }
 
+function buildParameterReport() {
+  const lines = [
+    "SMART CAR RUNTIME PARAMETERS",
+    "智能车手机端运行参数",
+    "========================================",
+    `导出时间=${new Date().toISOString()}`,
+    `连接状态=${diagnosticState.connected ? "已连接" : "未连接"}`,
+    `BLE设备=${diagnosticState.deviceName}`,
+    "说明=参数只在本次上电期间有效，芯片复位后恢复源码默认值",
+    "",
+    "[运行参数]"
+  ];
+  Object.entries(parameterDefinitions).forEach(([key, definition]) => {
+    lines.push(`${key}=${confirmedParameters[key]}${definition.unit ? " " + definition.unit : ""}  # ${definition.label}`);
+  });
+  lines.push(
+    "", "[当前反馈]",
+    `L1=${diagnosticState.l1}`, `L2=${diagnosticState.l2}`,
+    `R1=${diagnosticState.r1}`, `R2=${diagnosticState.r2}`,
+    `ERROR=${diagnosticState.error}`, `LD=${diagnosticState.ld}`, `RD=${diagnosticState.rd}`,
+    `CROSS=${diagnosticState.crossroadCode} (${diagnosticState.crossroad})`,
+    `距离=${diagnosticState.distance}`, `障碍状态=${diagnosticState.obstacle}`,
+    "", "END OF PARAMETERS"
+  );
+  return lines.join("\r\n");
+}
+
+function openParameterReport() {
+  const text = buildParameterReport();
+  openExportModal({
+    kind: "text",
+    title: "运行参数导出",
+    help: "可直接系统分享给调试人员，也可以复制全部文本。导出的是芯片最后确认的参数值。",
+    filename: `smart-car-parameters-${formatFileTimestamp()}.txt`,
+    blob: new Blob(["\uFEFF" + text], { type: "text/plain;charset=utf-8" }),
+    text
+  });
+}
+
 function buildDiagnosticReport() {
   const lines = [
     "SMART CAR DIAGNOSTIC REPORT",
@@ -470,6 +754,7 @@ function buildDiagnosticReport() {
     `自动避障=${diagnosticState.obstacleEnabled ? "ON" : "OFF"}`,
     `距离=${diagnosticState.distance}${/^\d+$/.test(String(diagnosticState.distance)) ? "cm" : ""}`,
     `障碍状态=${diagnosticState.obstacle}`,
+    `十字路口=${diagnosticState.crossroad}`,
     "",
     "[当前传感器与电机]",
     `L1=${diagnosticState.l1}`,
@@ -477,18 +762,23 @@ function buildDiagnosticReport() {
     `R1=${diagnosticState.r1}`,
     `R2=${diagnosticState.r2}`,
     `ERROR=${diagnosticState.error}`,
+    `LD=${diagnosticState.ld}`,
+    `RD=${diagnosticState.rd}`,
     `ML=${diagnosticState.ml}`,
     `MR=${diagnosticState.mr}`,
     "",
+    "[当前运行参数]",
+    ...Object.entries(parameterDefinitions).map(([key, definition]) => `${key}=${confirmedParameters[key]}${definition.unit ? " " + definition.unit : ""}`),
+    "",
     `[传感器历史数据，共${sensorHistory.length}条]`,
-    "时间,相对秒,L1,L2,R1,R2,ERROR"
+    "时间,相对秒,L1,L2,R1,R2,ERROR,LD,RD,CROSS"
   ];
 
   const firstTime = sensorHistory.length ? sensorHistory[0].time : 0;
   sensorHistory.forEach((point) => {
     lines.push([
       new Date(point.time).toISOString(), ((point.time - firstTime) / 1000).toFixed(3),
-      point.l1, point.l2, point.r1, point.r2, point.error
+      point.l1, point.l2, point.r1, point.r2, point.error, point.ld, point.rd, point.cross
     ].join(","));
   });
 
@@ -609,6 +899,34 @@ ui.speedPresets.querySelectorAll("button").forEach((button) => {
   });
 });
 
+document.querySelectorAll("[data-param-delta]").forEach((button) => {
+  button.addEventListener("click", () => {
+    const row = button.closest(".parameter-row");
+    const input = row.querySelector(".parameter-input");
+    const definition = parameterDefinitions[input.dataset.key];
+    const direction = Number(button.dataset.paramDelta);
+    const current = Number.isFinite(Number(input.value)) ? Number(input.value) : definition.defaultValue;
+    input.value = String(Math.max(definition.min, Math.min(definition.max, current + direction * definition.step)));
+    input.classList.remove("invalid");
+    setParameterRowState(input.dataset.key, "已修改，尚未应用", "pending");
+    validateParameterValues(false);
+  });
+});
+
+document.querySelectorAll(".parameter-input").forEach((input) => {
+  input.addEventListener("input", () => {
+    input.classList.remove("invalid");
+    setParameterRowState(input.dataset.key, "已修改，尚未应用", "pending");
+  });
+});
+
+document.querySelectorAll(".parameter-apply").forEach((button) => {
+  button.addEventListener("click", () => applyParameter(button.closest(".parameter-row").dataset.parameter));
+});
+ui.readParametersButton.addEventListener("click", requestParameters);
+ui.applyAllParametersButton.addEventListener("click", applyAllParameters);
+ui.exportParametersButton.addEventListener("click", openParameterReport);
+
 ui.clearLogButton.addEventListener("click", () => {
   diagnosticLogs.length = 0;
   ui.logWindow.innerHTML = '<p class="muted">日志已清空</p>';
@@ -618,14 +936,47 @@ document.querySelectorAll(".series-chip input").forEach((input) => {
   input.addEventListener("change", scheduleChartDraw);
 });
 ui.pauseChartButton.addEventListener("click", () => {
-  chartPaused = !chartPaused;
-  if (chartPaused) chartPausedAt = Date.now();
-  ui.pauseChartButton.textContent = chartPaused ? "继续" : "暂停";
+  if (chartPaused) {
+    returnChartToLive();
+    return;
+  }
+  chartPaused = true;
+  chartPausedAt = sensorHistory.length ? sensorHistory[sensorHistory.length - 1].time : Date.now();
+  updateChartControls();
   scheduleChartDraw();
 });
+ui.returnLiveButton.addEventListener("click", returnChartToLive);
+
+ui.sensorChart.addEventListener("pointerdown", (event) => {
+  if (!sensorHistory.length) return;
+  chartPaused = true;
+  chartPausedAt = chartPausedAt || sensorHistory[sensorHistory.length - 1].time;
+  chartDrag = { id: event.pointerId, x: event.clientX, y: event.clientY, end: clampChartEnd(chartPausedAt) };
+  ui.sensorChart.setPointerCapture?.(event.pointerId);
+  ui.sensorChart.classList.add("dragging");
+  updateChartControls();
+});
+ui.sensorChart.addEventListener("pointermove", (event) => {
+  if (!chartDrag || chartDrag.id !== event.pointerId) return;
+  const deltaX = event.clientX - chartDrag.x;
+  const deltaY = event.clientY - chartDrag.y;
+  if (Math.abs(deltaX) > Math.abs(deltaY) && event.cancelable) event.preventDefault();
+  const width = Math.max(1, ui.sensorChart.getBoundingClientRect().width - 55);
+  chartPausedAt = clampChartEnd(chartDrag.end - (deltaX / width) * CHART_WINDOW_MS);
+  updateChartControls();
+  scheduleChartDraw();
+});
+function finishChartDrag(event) {
+  if (!chartDrag || chartDrag.id !== event.pointerId) return;
+  ui.sensorChart.releasePointerCapture?.(event.pointerId);
+  ui.sensorChart.classList.remove("dragging");
+  chartDrag = null;
+}
+ui.sensorChart.addEventListener("pointerup", finishChartDrag);
+ui.sensorChart.addEventListener("pointercancel", finishChartDrag);
 ui.clearChartButton.addEventListener("click", () => {
   sensorHistory.length = 0;
-  if (chartPaused) chartPausedAt = Date.now();
+  returnChartToLive();
   updateChartControls();
   scheduleChartDraw();
   setMessage("传感器曲线已清空");
@@ -651,5 +1002,6 @@ setConnected(false);
 selectSpeed(3);
 selectMode(ui.sensorOnButton, ui.sensorOffButton, false);
 selectMode(ui.obstacleOnButton, ui.obstacleOffButton, true);
+updateCrossroad("NORMAL");
 updateChartControls();
 scheduleChartDraw();
