@@ -78,7 +78,7 @@ h2 { margin: 0; font-size: 1.16rem; }
 .protocol, .command-hint, .alive-indicator { color: var(--muted); font-size: .78rem; font-weight: 700; }
 .protocol { color: var(--blue); letter-spacing: .08em; white-space: nowrap; }
 
-.connection-buttons { display: grid; grid-template-columns: 1fr auto; gap: 12px; }
+.connection-buttons { display: grid; grid-template-columns: 1fr auto auto; gap: 10px; }
 .button {
   min-width: 0;
   min-height: 54px;
@@ -96,6 +96,8 @@ h2 { margin: 0; font-size: 1.16rem; }
 .button-icon { margin-right: 7px; font-size: 1.25rem; }
 .device-line { margin-top: 14px; padding: 13px 15px; border-radius: 13px; background: rgba(0,0,0,.2); color: var(--muted); }
 .device-line strong { color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.remembered-device { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 10px; padding: 10px 14px; border: 1px solid #24425f; border-radius: 12px; background: rgba(12,34,56,.55); color: var(--muted); font-size: .76rem; }
+.remembered-device strong { min-width: 0; color: #65baff; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .message { min-height: 1.25em; margin: 12px 2px 0; color: var(--muted); font-size: .83rem; }
 .message.error { color: #ff8790; }
 
@@ -180,7 +182,7 @@ h2 { margin: 0; font-size: 1.16rem; }
 .mode-button b { color: var(--blue); }
 
 .sensor-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 9px; }
-.motor-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 9px; margin-top: 9px; }
+.motor-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 9px; margin-top: 9px; }
 .data-tile { min-width: 0; padding: 13px 7px; border: 1px solid #243a53; border-radius: 13px; background: rgba(3,10,18,.33); text-align: center; }
 .data-tile span { display: block; color: var(--muted); font-size: .78rem; }
 .data-tile strong { display: block; margin-top: 5px; color: var(--blue); font-size: 1.2rem; overflow: hidden; text-overflow: ellipsis; }
@@ -298,7 +300,7 @@ body.modal-open { overflow: hidden; }
   .emergency-stop { grid-template-columns: auto 1fr; }
   .emergency-stop small { grid-column: 2; }
   .sensor-grid { grid-template-columns: repeat(2, 1fr); }
-  .motor-grid { grid-template-columns: repeat(3, 1fr); }
+  .motor-grid { grid-template-columns: repeat(2, 1fr); }
   .parameter-toolbar { grid-template-columns: 1fr 1fr; }
   .parameter-toolbar button:last-child { grid-column: 1 / -1; }
   .parameter-row { grid-template-columns: 1fr 62px; }

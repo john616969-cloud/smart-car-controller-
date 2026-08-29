@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta name="theme-color" content="#050b14">
   <title>智能车控制台</title>
-  <link rel="stylesheet" href="styles.css?v=20260829-3">
+  <link rel="stylesheet" href="styles.css?v=20260829-5">
 </head>
 <body>
   <main class="app-shell">
@@ -32,7 +32,11 @@
         <button class="button primary" id="connectButton" type="button">
           <span class="button-icon">ᛒ</span>选择蓝牙设备
         </button>
+        <button class="button secondary" id="reconnectButton" type="button" hidden>重连上次设备</button>
         <button class="button secondary" id="disconnectButton" type="button" disabled>断开</button>
+      </div>
+      <div class="remembered-device" id="rememberedDeviceLine" hidden>
+        <span>上次设备</span><strong id="rememberedDeviceName">--</strong>
       </div>
       <div class="device-line">
         <span>BLE</span>
@@ -180,6 +184,21 @@
           <div class="parameter-editor"><button data-param-delta="-1" type="button">−</button><input class="parameter-input" data-key="PID_D_GAIN" type="number" min="0" max="30" step="1" value="4" inputmode="numeric"><button data-param-delta="1" type="button">＋</button></div>
           <button class="parameter-apply parameter-action" type="button" disabled>应用</button><span class="parameter-item-state">默认值</span>
         </div>
+        <div class="parameter-row" data-parameter="APPROACH_PID_DIVISOR">
+          <div class="parameter-description"><strong>接近阶段 P 除数</strong><span>增大纠偏更弱，路口前更接近直行</span></div>
+          <div class="parameter-editor"><button data-param-delta="-1" type="button">−</button><input class="parameter-input" data-key="APPROACH_PID_DIVISOR" type="number" min="100" max="1200" step="10" value="500" inputmode="numeric"><button data-param-delta="1" type="button">＋</button></div>
+          <button class="parameter-apply parameter-action" type="button" disabled>应用</button><span class="parameter-item-state">默认值</span>
+        </div>
+        <div class="parameter-row" data-parameter="APPROACH_PID_D_GAIN">
+          <div class="parameter-description"><strong>接近阶段 D 强度</strong><span>增大抑制变化，过大会使响应迟钝</span></div>
+          <div class="parameter-editor"><button data-param-delta="-1" type="button">−</button><input class="parameter-input" data-key="APPROACH_PID_D_GAIN" type="number" min="0" max="20" step="1" value="2" inputmode="numeric"><button data-param-delta="1" type="button">＋</button></div>
+          <button class="parameter-apply parameter-action" type="button" disabled>应用</button><span class="parameter-item-state">默认值</span>
+        </div>
+        <div class="parameter-row" data-parameter="APPROACH_PID_LIMIT">
+          <div class="parameter-description"><strong>接近阶段最大差速</strong><span>减小更直，增大跟线能力更强</span></div>
+          <div class="parameter-editor"><button data-param-delta="-1" type="button">−</button><input class="parameter-input" data-key="APPROACH_PID_LIMIT" type="number" min="0" max="20" step="1" value="5" inputmode="numeric"><button data-param-delta="1" type="button">＋</button></div>
+          <button class="parameter-apply parameter-action" type="button" disabled>应用</button><span class="parameter-item-state">默认值 · %</span>
+        </div>
       </div>
 
       <h3 class="parameter-group-title">十字路口参数</h3>
@@ -237,6 +256,7 @@
         <div class="data-tile"><span>ERROR</span><strong id="errorValue">--</strong></div>
         <div class="data-tile"><span>左轮 ML</span><strong id="mlValue">--</strong></div>
         <div class="data-tile"><span>右轮 MR</span><strong id="mrValue">--</strong></div>
+        <div class="data-tile"><span>PID 模式</span><strong id="pidModeValue">--</strong></div>
       </div>
       <div class="crossroad-feedback">
         <div class="data-tile"><span>左增量 LD</span><strong id="ldValue">--</strong></div>
@@ -308,6 +328,6 @@
     </section>
   </div>
 
-  <script src="app.js?v=20260829-4"></script>
+  <script src="app.js?v=20260829-5"></script>
 </body>
 </html>

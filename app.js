@@ -7,7 +7,8 @@ const CHARACTERISTIC_UUID = "0000ffe1-0000-1000-8000-00805f9b34fb";
 const $ = (id) => document.getElementById(id);
 const ui = {
   connectionState: $("connectionState"), connectionText: $("connectionText"),
-  connectButton: $("connectButton"), disconnectButton: $("disconnectButton"),
+  connectButton: $("connectButton"), reconnectButton: $("reconnectButton"), disconnectButton: $("disconnectButton"),
+  rememberedDeviceLine: $("rememberedDeviceLine"), rememberedDeviceName: $("rememberedDeviceName"),
   deviceName: $("deviceName"), message: $("message"),
   distanceGauge: $("distanceGauge"), distanceValue: $("distanceValue"), distanceUnit: $("distanceUnit"),
   obstacleState: $("obstacleState"), obstacleChinese: $("obstacleChinese"), obstacleValue: $("obstacleValue"),
@@ -15,7 +16,7 @@ const ui = {
   sensorOnButton: $("sensorOnButton"), sensorOffButton: $("sensorOffButton"),
   obstacleOnButton: $("obstacleOnButton"), obstacleOffButton: $("obstacleOffButton"),
   l1Value: $("l1Value"), l2Value: $("l2Value"), r1Value: $("r1Value"), r2Value: $("r2Value"),
-  errorValue: $("errorValue"), mlValue: $("mlValue"), mrValue: $("mrValue"),
+  errorValue: $("errorValue"), mlValue: $("mlValue"), mrValue: $("mrValue"), pidModeValue: $("pidModeValue"),
   ldValue: $("ldValue"), rdValue: $("rdValue"), lsValue: $("lsValue"), rsValue: $("rsValue"),
   crossroadState: $("crossroadState"), crossroadValue: $("crossroadValue"),
   deviationValue: $("deviationValue"), deviationDirection: $("deviationDirection"), deviationNeedle: $("deviationNeedle"),
@@ -44,6 +45,9 @@ const DEVIATION_CENTER_BAND = 100;
 const CHART_WINDOW_MS = 60 * 1000;
 const CHART_HISTORY_MS = 30 * 60 * 1000;
 const BLE_CHUNK_SIZE = 20;
+const REMEMBERED_DEVICE_KEY = "smartCarRememberedBluetoothDevice";
+const RECONNECT_DELAY_MS = 2000;
+const RECONNECT_MAX_ATTEMPTS = 3;
 const sensorHistory = [];
 const diagnosticLogs = [];
 let chartPaused = false;
@@ -51,6 +55,11 @@ let chartPausedAt = 0;
 let chartDrawPending = false;
 let activeExport = null;
 let chartDrag = null;
+let userRequestedDisconnect = false;
+let reconnectAttempt = 0;
+let reconnectTimer = null;
+let connectionInProgress = false;
+let suppressDisconnectEvent = false;
 const pendingParameterRequests = new Map();
 
 const parameterDefinitions = {
@@ -58,6 +67,9 @@ const parameterDefinitions = {
   PID_DIVISOR: { label: "P 控制除数", unit: "", min: 20, max: 500, step: 5, defaultValue: 180 },
   PID_LIMIT: { label: "最大差速修正", unit: "%", min: 0, max: 60, step: 1, defaultValue: 12 },
   PID_D_GAIN: { label: "D 平滑强度", unit: "", min: 0, max: 30, step: 1, defaultValue: 4 },
+  APPROACH_PID_DIVISOR: { label: "接近阶段 P 除数", unit: "", min: 100, max: 1200, step: 10, defaultValue: 500 },
+  APPROACH_PID_D_GAIN: { label: "接近阶段 D 强度", unit: "", min: 0, max: 20, step: 1, defaultValue: 2 },
+  APPROACH_PID_LIMIT: { label: "接近阶段最大差速", unit: "%", min: 0, max: 20, step: 1, defaultValue: 5 },
   CROSS_APPROACH_ERROR: { label: "接近误差阈值", unit: "", min: 100, max: 3000, step: 50, defaultValue: 900 },
   CROSS_CENTER_SUM: { label: "路口中心和值", unit: "", min: 500, max: 7000, step: 50, defaultValue: 2700 },
   CROSS_LEAVE_ERROR: { label: "离开反向误差", unit: "", min: 100, max: 3000, step: 50, defaultValue: 900 },
@@ -80,7 +92,8 @@ const diagnosticState = {
   obstacle: "--",
   l1: "--", l2: "--", r1: "--", r2: "--",
   error: "--", ml: "--", mr: "--", ld: "--", rd: "--", ls: "--", rs: "--",
-  crossroad: "等待数据", crossroadCode: "--", crossroadPhase: "NORMAL", crossroadDirection: "NONE"
+  crossroad: "等待数据", crossroadCode: "--", crossroadPhase: "NORMAL", crossroadDirection: "NONE",
+  pidMode: "--"
 };
 
 const chartSeries = {
@@ -100,6 +113,7 @@ function setConnected(connected) {
   ui.connectionState.classList.toggle("connected", connected);
   ui.connectionText.textContent = connected ? "已连接" : "未连接";
   ui.connectButton.disabled = connected;
+  ui.reconnectButton.disabled = connected || connectionInProgress;
   ui.disconnectButton.disabled = !connected;
   document.querySelectorAll(".control-button, #speedSlider, #speedPresets button")
     .forEach((element) => { element.disabled = !connected; });
@@ -107,6 +121,36 @@ function setConnected(connected) {
     .forEach((element) => { element.disabled = !connected; });
   ui.parameterSyncState.textContent = connected ? "等待读取" : "等待连接";
   ui.parameterSyncState.className = "parameter-sync-state";
+}
+
+function getRememberedDeviceRecord() {
+  try {
+    const value = JSON.parse(localStorage.getItem(REMEMBERED_DEVICE_KEY) || "null");
+    return value && value.id ? value : null;
+  } catch (_) {
+    return null;
+  }
+}
+
+function updateRememberedDeviceUi() {
+  const remembered = getRememberedDeviceRecord();
+  ui.rememberedDeviceLine.hidden = !remembered;
+  ui.reconnectButton.hidden = !remembered;
+  ui.rememberedDeviceName.textContent = remembered?.name || "未命名设备";
+  return remembered;
+}
+
+function rememberBluetoothDevice(device) {
+  try {
+    localStorage.setItem(REMEMBERED_DEVICE_KEY, JSON.stringify({
+      id: device.id,
+      name: device.name || "未命名设备",
+      connectedAt: new Date().toISOString()
+    }));
+  } catch (error) {
+    addLog("无法保存上次设备：" + error.message, "error");
+  }
+  updateRememberedDeviceUi();
 }
 
 function addLog(text, kind = "rx") {
@@ -126,23 +170,16 @@ function addLog(text, kind = "rx") {
   ui.logWindow.scrollTop = ui.logWindow.scrollHeight;
 }
 
-async function connectBluetooth() {
-  if (!navigator.bluetooth) {
-    setMessage("当前浏览器不支持网页蓝牙。苹果手机请使用 Bluefy 打开本页。", true);
-    addLog("浏览器不支持 Web Bluetooth", "error");
-    return;
-  }
+async function connectDevice(device, source = "manual") {
+  if (!device || connectionInProgress) return false;
+  connectionInProgress = true;
+  ui.reconnectButton.disabled = true;
+  bluetoothDevice = device;
+  bluetoothDevice.addEventListener("gattserverdisconnected", handleDisconnected);
 
   try {
-    setMessage("正在打开蓝牙设备列表…");
-    bluetoothDevice = await navigator.bluetooth.requestDevice({
-      acceptAllDevices: true,
-      optionalServices: [SERVICE_UUID]
-    });
-    bluetoothDevice.addEventListener("gattserverdisconnected", handleDisconnected);
-
-    setMessage("正在连接 " + (bluetoothDevice.name || "蓝牙设备") + "…");
-    const server = await bluetoothDevice.gatt.connect();
+    setMessage(`${source === "automatic" ? "正在自动连接" : "正在连接"} ${device.name || "蓝牙设备"}…`);
+    const server = await device.gatt.connect();
     const service = await server.getPrimaryService(SERVICE_UUID);
     uartCharacteristic = await service.getCharacteristic(CHARACTERISTIC_UUID);
 
@@ -153,25 +190,90 @@ async function connectBluetooth() {
       addLog("FFE1 不支持通知，只能发送命令", "error");
     }
 
-    ui.deviceName.textContent = bluetoothDevice.name || "未命名设备";
-    diagnosticState.deviceName = bluetoothDevice.name || "未命名设备";
+    ui.deviceName.textContent = device.name || "未命名设备";
+    diagnosticState.deviceName = device.name || "未命名设备";
+    userRequestedDisconnect = false;
+    reconnectAttempt = 0;
+    rememberBluetoothDevice(device);
     setConnected(true);
-    setMessage("连接成功，可以控制小车");
-    addLog("已连接 " + (bluetoothDevice.name || "未命名设备"));
+    setMessage(source === "automatic" ? "已自动连接上次设备" : "连接成功，可以控制小车");
+    addLog("已连接 " + (device.name || "未命名设备"));
     setTimeout(requestParameters, 150);
+    return true;
+  } catch (error) {
+    uartCharacteristic = null;
+    if (device.gatt?.connected) {
+      suppressDisconnectEvent = true;
+      device.gatt.disconnect();
+      setTimeout(() => { suppressDisconnectEvent = false; }, 0);
+    }
+    setConnected(false);
+    setMessage("连接失败：" + error.message, true);
+    addLog(error.message, "error");
+    return false;
+  } finally {
+    connectionInProgress = false;
+    ui.reconnectButton.disabled = diagnosticState.connected;
+  }
+}
+
+async function findRememberedBluetoothDevice() {
+  const remembered = getRememberedDeviceRecord();
+  if (!remembered || !navigator.bluetooth?.getDevices) return null;
+  const devices = await navigator.bluetooth.getDevices();
+  return devices.find((device) => device.id === remembered.id) || null;
+}
+
+async function reconnectRememberedDevice(automatic = false) {
+  const remembered = updateRememberedDeviceUi();
+  if (!remembered) return false;
+  if (!navigator.bluetooth?.getDevices) {
+    setMessage("当前浏览器不能自动恢复设备，请点击“选择蓝牙设备”", true);
+    return false;
+  }
+  try {
+    const device = await findRememberedBluetoothDevice();
+    if (!device) {
+      setMessage("上次设备权限已失效，请重新选择设备", true);
+      return false;
+    }
+    return connectDevice(device, automatic ? "automatic" : "remembered");
+  } catch (error) {
+    setMessage("恢复上次设备失败：" + error.message, true);
+    addLog(error.message, "error");
+    return false;
+  }
+}
+
+async function connectBluetooth() {
+  if (!navigator.bluetooth) {
+    setMessage("当前浏览器不支持网页蓝牙。苹果手机请使用 Bluefy 打开本页。", true);
+    addLog("浏览器不支持 Web Bluetooth", "error");
+    return;
+  }
+
+  try {
+    userRequestedDisconnect = false;
+    clearTimeout(reconnectTimer);
+    setMessage("正在打开蓝牙设备列表…");
+    const selectedDevice = await navigator.bluetooth.requestDevice({
+      acceptAllDevices: true,
+      optionalServices: [SERVICE_UUID]
+    });
+    await connectDevice(selectedDevice, "manual");
   } catch (error) {
     if (error.name === "NotFoundError") {
       setMessage("已取消选择蓝牙设备");
       return;
     }
-    uartCharacteristic = null;
-    setConnected(false);
     setMessage("连接失败：" + error.message, true);
     addLog(error.message, "error");
   }
 }
 
 function disconnectBluetooth() {
+  userRequestedDisconnect = true;
+  clearTimeout(reconnectTimer);
   if (bluetoothDevice && bluetoothDevice.gatt && bluetoothDevice.gatt.connected) {
     bluetoothDevice.gatt.disconnect();
   } else {
@@ -179,14 +281,38 @@ function disconnectBluetooth() {
   }
 }
 
-function handleDisconnected() {
+function handleDisconnected(event) {
+  if (event?.target && bluetoothDevice && event.target !== bluetoothDevice) return;
+  if (suppressDisconnectEvent) return;
   uartCharacteristic = null;
   receiveBuffer = "";
   pendingParameterRequests.forEach((pending) => { clearTimeout(pending.timer); pending.resolve(false); });
   pendingParameterRequests.clear();
   setConnected(false);
-  setMessage("蓝牙已断开");
+  if (userRequestedDisconnect) {
+    setMessage("蓝牙已断开");
+    addLog("蓝牙已主动断开", "error");
+    return;
+  }
+  setMessage("蓝牙意外断开，2秒后自动重连…", true);
   addLog("蓝牙已断开", "error");
+  scheduleAutomaticReconnect();
+}
+
+function scheduleAutomaticReconnect() {
+  if (userRequestedDisconnect || reconnectAttempt >= RECONNECT_MAX_ATTEMPTS || !bluetoothDevice) {
+    if (!userRequestedDisconnect && reconnectAttempt >= RECONNECT_MAX_ATTEMPTS) {
+      setMessage("自动重连失败，请点击“重连上次设备”或重新选择", true);
+    }
+    return;
+  }
+  clearTimeout(reconnectTimer);
+  reconnectTimer = setTimeout(async () => {
+    reconnectAttempt += 1;
+    setMessage(`正在自动重连（${reconnectAttempt}/${RECONNECT_MAX_ATTEMPTS}）…`);
+    const connected = await connectDevice(bluetoothDevice, "automatic");
+    if (!connected) scheduleAutomaticReconnect();
+  }, RECONNECT_DELAY_MS);
 }
 
 async function sendCommand(command) {
@@ -351,6 +477,7 @@ async function applyAllParameters() {
   ui.parameterSyncState.className = "parameter-sync-state";
 
   const order = ["PID_DEADBAND", "PID_DIVISOR", "PID_LIMIT", "PID_D_GAIN",
+    "APPROACH_PID_DIVISOR", "APPROACH_PID_D_GAIN", "APPROACH_PID_LIMIT",
     "CROSS_APPROACH_ERROR", "CROSS_LEAVE_ERROR", "CROSS_SEQUENCE_MS"];
   if (result.values.CROSS_CENTER_SUM <= confirmedParameters.CROSS_RECOVER_SUM) order.push("CROSS_RECOVER_SUM", "CROSS_CENTER_SUM");
   else order.push("CROSS_CENTER_SUM", "CROSS_RECOVER_SUM");
@@ -364,7 +491,7 @@ async function applyAllParameters() {
   ui.applyAllParametersButton.disabled = !diagnosticState.connected;
   ui.parameterSyncState.textContent = allSucceeded ? "全部参数已生效" : "部分参数未生效";
   ui.parameterSyncState.className = `parameter-sync-state ${allSucceeded ? "synced" : "error"}`;
-  setMessage(allSucceeded ? "11 个参数已全部写入芯片" : "写入中断，请检查红色提示", !allSucceeded);
+  setMessage(allSucceeded ? "14 个参数已全部写入芯片" : "写入中断，请检查红色提示", !allSucceeded);
 }
 
 function handleNotification(event) {
@@ -409,10 +536,15 @@ function processLine(line) {
     const crossMatch = line.match(/\bCROSS\s*=\s*([01])/i);
     const phaseMatch = line.match(/\bPHASE\s*=\s*(NORMAL|APPROACH|CROSS|LEAVING)/i);
     const directionMatch = line.match(/\bDIR\s*=\s*(NONE|RIGHT_FIRST|LEFT_FIRST)/i);
+    const pidModeMatch = line.match(/\bPID_MODE\s*=\s*(NORMAL|APPROACH)/i);
     if (ldMatch) { ui.ldValue.textContent = ldMatch[1]; diagnosticState.ld = Number(ldMatch[1]); }
     if (rdMatch) { ui.rdValue.textContent = rdMatch[1]; diagnosticState.rd = Number(rdMatch[1]); }
     if (lsMatch) { ui.lsValue.textContent = lsMatch[1]; diagnosticState.ls = Number(lsMatch[1]); }
     if (rsMatch) { ui.rsValue.textContent = rsMatch[1]; diagnosticState.rs = Number(rsMatch[1]); }
+    if (pidModeMatch) {
+      diagnosticState.pidMode = pidModeMatch[1].toUpperCase();
+      ui.pidModeValue.textContent = diagnosticState.pidMode === "APPROACH" ? "弱 PD" : "普通 PD";
+    }
     if (phaseMatch) updateCrossroad(phaseMatch[1].toUpperCase(), directionMatch ? directionMatch[1].toUpperCase() : diagnosticState.crossroadDirection);
     else if (crossMatch) updateCrossroad(crossMatch[1] === "1" ? "CROSS" : "NORMAL");
     updateDeviation(values[4]);
@@ -421,7 +553,8 @@ function processLine(line) {
       ld: ldMatch ? Number(ldMatch[1]) : "", rd: rdMatch ? Number(rdMatch[1]) : "",
       ls: lsMatch ? Number(lsMatch[1]) : "", rs: rsMatch ? Number(rsMatch[1]) : "",
       cross: crossMatch ? Number(crossMatch[1]) : "", phase: phaseMatch ? phaseMatch[1].toUpperCase() : "",
-      direction: directionMatch ? directionMatch[1].toUpperCase() : ""
+      direction: directionMatch ? directionMatch[1].toUpperCase() : "",
+      pidMode: pidModeMatch ? pidModeMatch[1].toUpperCase() : ""
     });
   }
 
@@ -659,12 +792,12 @@ function downloadBlob(blob, filename) {
 function exportSensorCsv() {
   if (!sensorHistory.length) return;
   const firstTime = sensorHistory[0].time;
-  const rows = ["时间,相对秒,L1,L2,R1,R2,ERROR,LD,RD,LS,RS,CROSS,PHASE,DIR"];
+  const rows = ["时间,相对秒,L1,L2,R1,R2,ERROR,LD,RD,LS,RS,CROSS,PHASE,DIR,PID_MODE"];
   sensorHistory.forEach((point) => {
     rows.push([
       new Date(point.time).toISOString(), ((point.time - firstTime) / 1000).toFixed(3),
       point.l1, point.l2, point.r1, point.r2, point.error, point.ld, point.rd,
-      point.ls, point.rs, point.cross, point.phase, point.direction
+      point.ls, point.rs, point.cross, point.phase, point.direction, point.pidMode
     ].join(","));
   });
   const blob = new Blob(["\uFEFF" + rows.join("\r\n")], { type: "text/csv;charset=utf-8" });
@@ -744,6 +877,7 @@ function buildParameterReport() {
     `LS=${diagnosticState.ls}`, `RS=${diagnosticState.rs}`,
     `CROSS=${diagnosticState.crossroadCode} (${diagnosticState.crossroad})`,
     `PHASE=${diagnosticState.crossroadPhase}`, `DIR=${diagnosticState.crossroadDirection}`,
+    `PID_MODE=${diagnosticState.pidMode}`,
     `距离=${diagnosticState.distance}`, `障碍状态=${diagnosticState.obstacle}`,
     "", "END OF PARAMETERS"
   );
@@ -785,6 +919,7 @@ function buildDiagnosticReport() {
     `十字路口=${diagnosticState.crossroad}`,
     `十字阶段=${diagnosticState.crossroadPhase}`,
     `入口方向=${diagnosticState.crossroadDirection}`,
+    `PID模式=${diagnosticState.pidMode}`,
     "",
     "[当前传感器与电机]",
     `L1=${diagnosticState.l1}`,
@@ -803,7 +938,7 @@ function buildDiagnosticReport() {
     ...Object.entries(parameterDefinitions).map(([key, definition]) => `${key}=${confirmedParameters[key]}${definition.unit ? " " + definition.unit : ""}`),
     "",
     `[传感器历史数据，共${sensorHistory.length}条]`,
-    "时间,相对秒,L1,L2,R1,R2,ERROR,LD,RD,LS,RS,CROSS,PHASE,DIR"
+    "时间,相对秒,L1,L2,R1,R2,ERROR,LD,RD,LS,RS,CROSS,PHASE,DIR,PID_MODE"
   ];
 
   const firstTime = sensorHistory.length ? sensorHistory[0].time : 0;
@@ -811,7 +946,7 @@ function buildDiagnosticReport() {
     lines.push([
       new Date(point.time).toISOString(), ((point.time - firstTime) / 1000).toFixed(3),
       point.l1, point.l2, point.r1, point.r2, point.error, point.ld, point.rd,
-      point.ls, point.rs, point.cross, point.phase, point.direction
+      point.ls, point.rs, point.cross, point.phase, point.direction, point.pidMode
     ].join(","));
   });
 
@@ -922,6 +1057,7 @@ function selectPage(pageName) {
 }
 
 ui.connectButton.addEventListener("click", connectBluetooth);
+ui.reconnectButton.addEventListener("click", () => reconnectRememberedDevice(false));
 ui.disconnectButton.addEventListener("click", disconnectBluetooth);
 
 document.querySelectorAll(".page-tab").forEach((button) => {
@@ -1050,9 +1186,14 @@ window.addEventListener("resize", scheduleChartDraw);
 setInterval(() => { if (!chartPaused) scheduleChartDraw(); }, 1000);
 
 setConnected(false);
+const rememberedDeviceOnLoad = updateRememberedDeviceUi();
 selectSpeed(3);
 selectMode(ui.sensorOnButton, ui.sensorOffButton, false);
 selectMode(ui.obstacleOnButton, ui.obstacleOffButton, true);
 updateCrossroad("NORMAL");
 updateChartControls();
 scheduleChartDraw();
+if (rememberedDeviceOnLoad) {
+  setMessage(`正在准备自动连接上次设备：${rememberedDeviceOnLoad.name || "未命名设备"}`);
+  setTimeout(() => reconnectRememberedDevice(true), 300);
+}
