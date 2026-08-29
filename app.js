@@ -227,14 +227,35 @@ async function findRememberedBluetoothDevice() {
 async function reconnectRememberedDevice(automatic = false) {
   const remembered = updateRememberedDeviceUi();
   if (!remembered) return false;
+
+  // 页面尚未刷新时，优先复用已经取得授权的设备对象。
+  // Bluefy 不支持 getDevices()，但断线后仍可通过这个对象直接重连。
+  if (bluetoothDevice && bluetoothDevice.id === remembered.id) {
+    return connectDevice(bluetoothDevice, automatic ? "automatic" : "remembered");
+  }
+
   if (!navigator.bluetooth?.getDevices) {
-    setMessage("当前浏览器不能自动恢复设备，请点击“选择蓝牙设备”", true);
+    // 自动恢复不能主动弹出设备选择框；浏览器要求必须由用户点击触发。
+    if (automatic) {
+      setMessage("浏览器不能自动恢复设备，请点击“重连上次设备”");
+      return false;
+    }
+
+    // 用户亲自点击了“重连上次设备”，可以安全地打开 Bluefy 的设备列表。
+    setMessage("正在重新选择上次设备…");
+    await connectBluetooth();
     return false;
   }
   try {
     const device = await findRememberedBluetoothDevice();
     if (!device) {
-      setMessage("上次设备权限已失效，请重新选择设备", true);
+      if (automatic) {
+        setMessage("上次设备权限已失效，请点击“重连上次设备”");
+        return false;
+      }
+
+      setMessage("上次设备权限已失效，正在打开设备列表…");
+      await connectBluetooth();
       return false;
     }
     return connectDevice(device, automatic ? "automatic" : "remembered");
