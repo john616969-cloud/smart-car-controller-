@@ -196,7 +196,9 @@ async function sendCommand(command) {
   }
 
   try {
-    const data = encoder.encode(command);
+    /* 单字节车辆控制统一加 ! 帧头，避免调试文字中的 S/N/T 被芯片误当命令。 */
+    const framedCommand = /^[FBSTNOX1-9]$/i.test(String(command)) ? `!${String(command).toUpperCase()}\n` : String(command);
+    const data = encoder.encode(framedCommand);
     for (let offset = 0; offset < data.length; offset += BLE_CHUNK_SIZE) {
       const chunk = data.slice(offset, offset + BLE_CHUNK_SIZE);
       if (uartCharacteristic.properties.write && uartCharacteristic.writeValueWithResponse) {
@@ -426,7 +428,7 @@ function processLine(line) {
   const distanceMatch = line.match(/DIST\s*=\s*(OUT|\d+)\s*(?:CM)?/i);
   const obstacleMatch = line.match(/(?:OBSTACLE\s*=\s*|OBSTACLE\s+)(CLEAR|SLOW|STOP)/i);
   const avoidanceMatch = line.match(/(?:AVOID\s*=\s*|OBSTACLE\s+)(ON|OFF)\b/i);
-  const sensorModeMatch = line.match(/SENSOR\s+(ON|OFF)\b/i);
+  const sensorModeMatch = line.match(/SENSOR\s*(?:=|\s)\s*(ON|OFF)\b/i);
   if (distanceMatch) updateDistance(distanceMatch[1]);
   if (obstacleMatch) updateObstacle(obstacleMatch[1].toUpperCase());
   if (avoidanceMatch) selectMode(ui.obstacleOnButton, ui.obstacleOffButton, avoidanceMatch[1].toUpperCase() === "ON");
