@@ -214,19 +214,29 @@
           <div class="parameter-editor"><button data-param-delta="-1" type="button">−</button><input class="parameter-input" data-key="CROSS_APPROACH_ERROR" type="number" min="100" max="3000" step="50" value="900" inputmode="numeric"><button data-param-delta="1" type="button">＋</button></div>
           <button class="parameter-apply parameter-action" type="button" disabled>应用</button><span class="parameter-item-state">默认值</span>
         </div>
-        <div class="parameter-row" data-parameter="CROSS_CENTER_SUM">
-          <div class="parameter-description"><strong>路口中心和值</strong><span>左右和值均超过才确认进入</span></div>
-          <div class="parameter-editor"><button data-param-delta="-1" type="button">−</button><input class="parameter-input" data-key="CROSS_CENTER_SUM" type="number" min="500" max="7000" step="50" value="2700" inputmode="numeric"><button data-param-delta="1" type="button">＋</button></div>
+        <div class="parameter-row" data-parameter="CROSS_OUTER_MIN">
+          <div class="parameter-description"><strong>入口侧外传感器下限</strong><span>同时用于 L2/R2；减小更灵敏但更易误判弯道</span></div>
+          <div class="parameter-editor"><button data-param-delta="-1" type="button">−</button><input class="parameter-input" data-key="CROSS_OUTER_MIN" type="number" min="0" max="4095" step="25" value="350" inputmode="numeric"><button data-param-delta="1" type="button">＋</button></div>
           <button class="parameter-apply parameter-action" type="button" disabled>应用</button><span class="parameter-item-state">默认值</span>
         </div>
-        <div class="parameter-row" data-parameter="CROSS_LEAVE_ERROR">
-          <div class="parameter-description"><strong>离开反向误差</strong><span>入口方向相反的误差达到该值才离开</span></div>
-          <div class="parameter-editor"><button data-param-delta="-1" type="button">−</button><input class="parameter-input" data-key="CROSS_LEAVE_ERROR" type="number" min="100" max="3000" step="50" value="900" inputmode="numeric"><button data-param-delta="1" type="button">＋</button></div>
+        <div class="parameter-row" data-parameter="CROSS_OPPOSITE_INNER_MAX">
+          <div class="parameter-description"><strong>对侧内传感器上限</strong><span>左候选看 R1，右候选看 L1；增大更宽松</span></div>
+          <div class="parameter-editor"><button data-param-delta="-1" type="button">−</button><input class="parameter-input" data-key="CROSS_OPPOSITE_INNER_MAX" type="number" min="0" max="4095" step="25" value="500" inputmode="numeric"><button data-param-delta="1" type="button">＋</button></div>
           <button class="parameter-apply parameter-action" type="button" disabled>应用</button><span class="parameter-item-state">默认值</span>
         </div>
-        <div class="parameter-row" data-parameter="CROSS_RECOVER_SUM">
-          <div class="parameter-description"><strong>恢复赛道和值</strong><span>左右都低于后恢复循迹；必须小于中心和值</span></div>
-          <div class="parameter-editor"><button data-param-delta="-1" type="button">−</button><input class="parameter-input" data-key="CROSS_RECOVER_SUM" type="number" min="500" max="7000" step="50" value="2500" inputmode="numeric"><button data-param-delta="1" type="button">＋</button></div>
+        <div class="parameter-row" data-parameter="CROSS_SIDE_SUM_MIN">
+          <div class="parameter-description"><strong>入口侧和值下限</strong><span>左候选看 LS，右候选看 RS；减小更易触发</span></div>
+          <div class="parameter-editor"><button data-param-delta="-1" type="button">−</button><input class="parameter-input" data-key="CROSS_SIDE_SUM_MIN" type="number" min="100" max="8190" step="50" value="2000" inputmode="numeric"><button data-param-delta="1" type="button">＋</button></div>
+          <button class="parameter-apply parameter-action" type="button" disabled>应用</button><span class="parameter-item-state">默认值</span>
+        </div>
+        <div class="parameter-row" data-parameter="CROSS_EXIT_ERROR">
+          <div class="parameter-description"><strong>退出误差上限</strong><span>绝对误差低于该值才允许退出；减小会延后退出</span></div>
+          <div class="parameter-editor"><button data-param-delta="-1" type="button">−</button><input class="parameter-input" data-key="CROSS_EXIT_ERROR" type="number" min="0" max="3000" step="50" value="500" inputmode="numeric"><button data-param-delta="1" type="button">＋</button></div>
+          <button class="parameter-apply parameter-action" type="button" disabled>应用</button><span class="parameter-item-state">默认值</span>
+        </div>
+        <div class="parameter-row" data-parameter="CROSS_EXIT_SUM">
+          <div class="parameter-description"><strong>退出左右和值上限</strong><span>LS、RS 都低于才退出；必须小于入口侧和值</span></div>
+          <div class="parameter-editor"><button data-param-delta="-1" type="button">−</button><input class="parameter-input" data-key="CROSS_EXIT_SUM" type="number" min="100" max="8190" step="50" value="1200" inputmode="numeric"><button data-param-delta="1" type="button">＋</button></div>
           <button class="parameter-apply parameter-action" type="button" disabled>应用</button><span class="parameter-item-state">默认值</span>
         </div>
         <div class="parameter-row" data-parameter="CROSS_SEQUENCE_MS">

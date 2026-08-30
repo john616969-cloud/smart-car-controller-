@@ -72,9 +72,11 @@ const parameterDefinitions = {
   APPROACH_PID_D_GAIN: { label: "接近阶段 D 强度", unit: "", min: 0, max: 20, step: 1, defaultValue: 2 },
   APPROACH_PID_LIMIT: { label: "接近阶段最大差速", unit: "%", min: 0, max: 20, step: 1, defaultValue: 5 },
   CROSS_APPROACH_ERROR: { label: "接近误差阈值", unit: "", min: 100, max: 3000, step: 50, defaultValue: 900 },
-  CROSS_CENTER_SUM: { label: "路口中心和值", unit: "", min: 500, max: 7000, step: 50, defaultValue: 2700 },
-  CROSS_LEAVE_ERROR: { label: "离开反向误差", unit: "", min: 100, max: 3000, step: 50, defaultValue: 900 },
-  CROSS_RECOVER_SUM: { label: "恢复赛道和值", unit: "", min: 500, max: 7000, step: 50, defaultValue: 2500 },
+  CROSS_OUTER_MIN: { label: "入口侧外传感器下限", unit: "", min: 0, max: 4095, step: 25, defaultValue: 350 },
+  CROSS_OPPOSITE_INNER_MAX: { label: "对侧内传感器上限", unit: "", min: 0, max: 4095, step: 25, defaultValue: 500 },
+  CROSS_SIDE_SUM_MIN: { label: "入口侧和值下限", unit: "", min: 100, max: 8190, step: 50, defaultValue: 2000 },
+  CROSS_EXIT_ERROR: { label: "退出误差上限", unit: "", min: 0, max: 3000, step: 50, defaultValue: 500 },
+  CROSS_EXIT_SUM: { label: "退出左右和值上限", unit: "", min: 100, max: 8190, step: 50, defaultValue: 1200 },
   CROSS_SEQUENCE_MS: { label: "入口序列时间", unit: "ms", min: 100, max: 3000, step: 100, defaultValue: 1000 },
   CROSS_MIN_MS: { label: "最短直行时间", unit: "ms", min: 0, max: 2000, step: 50, defaultValue: 300 },
   CROSS_MAX_MS: { label: "最长直行时间", unit: "ms", min: 300, max: 5000, step: 100, defaultValue: 2200 }
@@ -398,13 +400,13 @@ function validateParameterValues(showErrors = true) {
     values[key] = value;
   });
 
-  if (valid && values.CROSS_RECOVER_SUM >= values.CROSS_CENTER_SUM) {
+  if (valid && values.CROSS_EXIT_SUM >= values.CROSS_SIDE_SUM_MIN) {
     valid = false;
-    getParameterInput("CROSS_CENTER_SUM").classList.add("invalid");
-    getParameterInput("CROSS_RECOVER_SUM").classList.add("invalid");
+    getParameterInput("CROSS_SIDE_SUM_MIN").classList.add("invalid");
+    getParameterInput("CROSS_EXIT_SUM").classList.add("invalid");
     if (showErrors) {
-      setParameterRowState("CROSS_CENTER_SUM", "中心和值必须大于恢复和值", "error");
-      setParameterRowState("CROSS_RECOVER_SUM", "恢复和值必须小于中心和值", "error");
+      setParameterRowState("CROSS_SIDE_SUM_MIN", "入口侧和值必须大于退出和值", "error");
+      setParameterRowState("CROSS_EXIT_SUM", "退出和值必须小于入口侧和值", "error");
     }
   }
   if (valid && values.CROSS_MAX_MS <= values.CROSS_MIN_MS) {
@@ -501,9 +503,10 @@ async function applyAllParameters() {
 
   const order = ["PID_DEADBAND", "PID_DIVISOR", "PID_LIMIT", "PID_D_GAIN",
     "APPROACH_PID_DIVISOR", "APPROACH_PID_D_GAIN", "APPROACH_PID_LIMIT",
-    "CROSS_APPROACH_ERROR", "CROSS_LEAVE_ERROR", "CROSS_SEQUENCE_MS"];
-  if (result.values.CROSS_CENTER_SUM <= confirmedParameters.CROSS_RECOVER_SUM) order.push("CROSS_RECOVER_SUM", "CROSS_CENTER_SUM");
-  else order.push("CROSS_CENTER_SUM", "CROSS_RECOVER_SUM");
+    "CROSS_APPROACH_ERROR", "CROSS_OUTER_MIN", "CROSS_OPPOSITE_INNER_MAX",
+    "CROSS_EXIT_ERROR", "CROSS_SEQUENCE_MS"];
+  if (result.values.CROSS_SIDE_SUM_MIN <= confirmedParameters.CROSS_EXIT_SUM) order.push("CROSS_EXIT_SUM", "CROSS_SIDE_SUM_MIN");
+  else order.push("CROSS_SIDE_SUM_MIN", "CROSS_EXIT_SUM");
   if (result.values.CROSS_MAX_MS <= confirmedParameters.CROSS_MIN_MS) order.push("CROSS_MIN_MS", "CROSS_MAX_MS");
   else order.push("CROSS_MAX_MS", "CROSS_MIN_MS");
 
@@ -544,6 +547,9 @@ function processLine(line) {
     ui.parameterSyncState.textContent = "已与芯片同步";
     ui.parameterSyncState.className = "parameter-sync-state synced";
   }
+
+  const speedMatch = line.match(/\bSPEED\s*=\s*(\d+)%/i);
+  if (speedMatch) selectSpeed(Math.round(Number(speedMatch[1]) / 10));
 
   const crossroadEnableMatch = line.match(/\bCE\s*=\s*([01])\b/i);
   const sensorMatch = line.match(/L1\s*=\s*(\d+).*?L2\s*=\s*(\d+).*?R1\s*=\s*(\d+).*?R2\s*=\s*(\d+).*?ERROR\s*=\s*(-?\d+).*?ML\s*=\s*(\d+).*?MR\s*=\s*(\d+)/i);
@@ -595,8 +601,11 @@ function processLine(line) {
   if (crossroadEnableMatch) setCrossroadDetection(crossroadEnableMatch[1] === "1");
   if (crossroadDetectMatch) setCrossroadDetection(crossroadDetectMatch[1].toUpperCase() === "ON");
 
-  const approachEvent = line.match(/CROSSROAD\s+APPROACH\s+(RIGHT_FIRST|LEFT_FIRST)/i);
-  if (approachEvent) updateCrossroad("APPROACH", approachEvent[1].toUpperCase());
+  const approachEvent = line.match(/CROSSROAD\s+APPROACH\s+(RIGHT(?:_FIRST)?|LEFT(?:_FIRST)?)/i);
+  if (approachEvent) {
+    const side = approachEvent[1].toUpperCase().startsWith("RIGHT") ? "RIGHT_FIRST" : "LEFT_FIRST";
+    updateCrossroad("APPROACH", side);
+  }
   else if (/CROSSROAD\s+ENTER/i.test(line)) updateCrossroad("CROSS", diagnosticState.crossroadDirection);
   else if (/CROSSROAD\s+LEAVING/i.test(line)) updateCrossroad("LEAVING", diagnosticState.crossroadDirection);
   else if (/CROSSROAD\s+TIMEOUT/i.test(line)) updateCrossroad("TIMEOUT");
@@ -1076,6 +1085,15 @@ function selectSpeed(speed) {
   });
 }
 
+/* 换挡后芯片会切换到该档独立 PD；稍后重新读取，保证手机显示的是当前档参数。 */
+async function selectAndSendSpeed(speed) {
+  const gear = Math.max(1, Math.min(9, Number(speed)));
+  selectSpeed(gear);
+  if (await sendCommand(String(gear))) {
+    setTimeout(requestParameters, 150);
+  }
+}
+
 function selectMode(onButton, offButton, enabled) {
   onButton.classList.toggle("selected", enabled);
   offButton.classList.toggle("selected", !enabled);
@@ -1123,11 +1141,10 @@ document.querySelectorAll(".control-button").forEach((button) => {
 });
 
 ui.speedSlider.addEventListener("input", () => selectSpeed(ui.speedSlider.value));
-ui.speedSlider.addEventListener("change", () => sendCommand(ui.speedSlider.value));
+ui.speedSlider.addEventListener("change", () => selectAndSendSpeed(ui.speedSlider.value));
 ui.speedPresets.querySelectorAll("button").forEach((button) => {
   button.addEventListener("click", () => {
-    selectSpeed(button.dataset.speed);
-    sendCommand(button.dataset.speed);
+    selectAndSendSpeed(button.dataset.speed);
   });
 });
 
