@@ -46,6 +46,9 @@ const DEVIATION_CENTER_BAND = 100;
 const CHART_WINDOW_MS = 60 * 1000;
 const CHART_HISTORY_MS = 30 * 60 * 1000;
 const BLE_CHUNK_SIZE = 20;
+const BLE_CHUNK_GAP_MS = 15;
+const PARAMETER_REPLY_TIMEOUT_MS = 4500;
+const PARAMETER_TIMEOUT_RETRY_COUNT = 1;
 const REMEMBERED_DEVICE_KEY = "smartCarRememberedBluetoothDevice";
 const RECONNECT_DELAY_MS = 2000;
 const RECONNECT_MAX_ATTEMPTS = 3;
@@ -62,6 +65,10 @@ let reconnectTimer = null;
 let connectionInProgress = false;
 let suppressDisconnectEvent = false;
 const pendingParameterRequests = new Map();
+
+function waitMilliseconds(milliseconds) {
+  return new Promise((resolve) => setTimeout(resolve, milliseconds));
+}
 
 const parameterDefinitions = {
   PID_DEADBAND: { label: "循迹误差死区", unit: "", min: 0, max: 500, step: 10, defaultValue: 180 },
@@ -361,6 +368,7 @@ async function sendCommand(command) {
       } else {
         throw new Error("FFE1 不支持写入");
       }
+      if (offset + BLE_CHUNK_SIZE < data.length) await waitMilliseconds(BLE_CHUNK_GAP_MS);
     }
     const displayCommand = String(command).trim();
     addLog(displayCommand, "tx");
@@ -460,24 +468,36 @@ async function requestParameters() {
   await sendCommand("@GET PARAMS\n");
 }
 
-async function sendParameterAndWait(key, value) {
+async function sendParameterOnce(key, value) {
   if (pendingParameterRequests.has(key)) return false;
   setParameterRowState(key, "正在写入…", "pending");
   return new Promise(async (resolve) => {
     const timer = setTimeout(() => {
       pendingParameterRequests.delete(key);
       setParameterRowState(key, "等待芯片回复超时", "error");
-      resolve(false);
-    }, 2200);
+      resolve("timeout");
+    }, PARAMETER_REPLY_TIMEOUT_MS);
     pendingParameterRequests.set(key, { resolve, timer });
     const sent = await sendCommand(`@SET ${key} ${value}\n`);
     if (!sent) {
       clearTimeout(timer);
       pendingParameterRequests.delete(key);
       setParameterRowState(key, "发送失败", "error");
-      resolve(false);
+      resolve("send-failed");
     }
   });
+}
+
+/* 只有“等待回复超时”才自动重试；芯片明确拒绝或蓝牙写入失败时不重复发送。 */
+async function sendParameterAndWait(key, value) {
+  for (let attempt = 0; attempt <= PARAMETER_TIMEOUT_RETRY_COUNT; attempt += 1) {
+    const result = await sendParameterOnce(key, value);
+    if (result === true) return true;
+    if (result !== "timeout" || attempt >= PARAMETER_TIMEOUT_RETRY_COUNT) return false;
+    setParameterRowState(key, "首次超时，正在自动重试…", "pending");
+    await waitMilliseconds(120);
+  }
+  return false;
 }
 
 async function applyParameter(key) {
