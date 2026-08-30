@@ -14,6 +14,7 @@ const ui = {
   obstacleState: $("obstacleState"), obstacleChinese: $("obstacleChinese"), obstacleValue: $("obstacleValue"),
   speedSlider: $("speedSlider"), speedReadout: $("speedReadout"), speedPresets: $("speedPresets"),
   sensorOnButton: $("sensorOnButton"), sensorOffButton: $("sensorOffButton"),
+  crossroadToggleButton: $("crossroadToggleButton"),
   obstacleOnButton: $("obstacleOnButton"), obstacleOffButton: $("obstacleOffButton"),
   l1Value: $("l1Value"), l2Value: $("l2Value"), r1Value: $("r1Value"), r2Value: $("r2Value"),
   errorValue: $("errorValue"), mlValue: $("mlValue"), mrValue: $("mrValue"), pidModeValue: $("pidModeValue"),
@@ -86,7 +87,8 @@ const diagnosticState = {
   connected: false,
   deviceName: "--",
   speed: 30,
-  sensorEnabled: false,
+  sensorEnabled: true,
+  crossroadEnabled: true,
   obstacleEnabled: true,
   distance: "--",
   obstacle: "--",
@@ -344,7 +346,7 @@ async function sendCommand(command) {
 
   try {
     /* 单字节车辆控制统一加 ! 帧头，避免调试文字中的 S/N/T 被芯片误当命令。 */
-    const framedCommand = /^[FBSTNOX1-9]$/i.test(String(command)) ? `!${String(command).toUpperCase()}\n` : String(command);
+    const framedCommand = /^[FBSTNOXQC1-9]$/i.test(String(command)) ? `!${String(command).toUpperCase()}\n` : String(command);
     const data = encoder.encode(framedCommand);
     for (let offset = 0; offset < data.length; offset += BLE_CHUNK_SIZE) {
       const chunk = data.slice(offset, offset + BLE_CHUNK_SIZE);
@@ -543,6 +545,7 @@ function processLine(line) {
     ui.parameterSyncState.className = "parameter-sync-state synced";
   }
 
+  const crossroadEnableMatch = line.match(/\bCE\s*=\s*([01])\b/i);
   const sensorMatch = line.match(/L1\s*=\s*(\d+).*?L2\s*=\s*(\d+).*?R1\s*=\s*(\d+).*?R2\s*=\s*(\d+).*?ERROR\s*=\s*(-?\d+).*?ML\s*=\s*(\d+).*?MR\s*=\s*(\d+)/i);
   if (sensorMatch) {
     const values = sensorMatch.slice(1).map(Number);
@@ -575,7 +578,8 @@ function processLine(line) {
       ls: lsMatch ? Number(lsMatch[1]) : "", rs: rsMatch ? Number(rsMatch[1]) : "",
       cross: crossMatch ? Number(crossMatch[1]) : "", phase: phaseMatch ? phaseMatch[1].toUpperCase() : "",
       direction: directionMatch ? directionMatch[1].toUpperCase() : "",
-      pidMode: pidModeMatch ? pidModeMatch[1].toUpperCase() : ""
+      pidMode: pidModeMatch ? pidModeMatch[1].toUpperCase() : "",
+      ce: crossroadEnableMatch ? Number(crossroadEnableMatch[1]) : (diagnosticState.crossroadEnabled ? 1 : 0)
     });
   }
 
@@ -583,10 +587,13 @@ function processLine(line) {
   const obstacleMatch = line.match(/(?:OBSTACLE\s*=\s*|OBSTACLE\s+)(CLEAR|SLOW|STOP)/i);
   const avoidanceMatch = line.match(/(?:AVOID\s*=\s*|OBSTACLE\s+)(ON|OFF)\b/i);
   const sensorModeMatch = line.match(/SENSOR\s*(?:=|\s)\s*(ON|OFF)\b/i);
+  const crossroadDetectMatch = line.match(/CROSS\s+DETECT\s+(ON|OFF)\b/i);
   if (distanceMatch) updateDistance(distanceMatch[1]);
   if (obstacleMatch) updateObstacle(obstacleMatch[1].toUpperCase());
   if (avoidanceMatch) selectMode(ui.obstacleOnButton, ui.obstacleOffButton, avoidanceMatch[1].toUpperCase() === "ON");
   if (sensorModeMatch) selectMode(ui.sensorOnButton, ui.sensorOffButton, sensorModeMatch[1].toUpperCase() === "ON");
+  if (crossroadEnableMatch) setCrossroadDetection(crossroadEnableMatch[1] === "1");
+  if (crossroadDetectMatch) setCrossroadDetection(crossroadDetectMatch[1].toUpperCase() === "ON");
 
   const approachEvent = line.match(/CROSSROAD\s+APPROACH\s+(RIGHT_FIRST|LEFT_FIRST)/i);
   if (approachEvent) updateCrossroad("APPROACH", approachEvent[1].toUpperCase());
@@ -606,7 +613,8 @@ function updateCrossroad(state, direction = "NONE") {
     APPROACH: { text: `接近十字路口${directionText ? " · " + directionText : ""}`, code: 0, className: "approach" },
     CROSS: { text: `十字路口直行${directionText ? " · " + directionText : ""}`, code: 1, className: "active" },
     LEAVING: { text: `正在离开十字路口${directionText ? " · " + directionText : ""}`, code: 1, className: "active" },
-    TIMEOUT: { text: "十字路口超时保护", code: "TIMEOUT", className: "timeout" }
+    TIMEOUT: { text: "十字路口超时保护", code: "TIMEOUT", className: "timeout" },
+    DISABLED: { text: "十字检测已关闭", code: "OFF", className: "normal" }
   };
   const selected = states[state] || states.NORMAL;
   ui.crossroadState.className = `crossroad-state ${selected.className}`;
@@ -615,6 +623,16 @@ function updateCrossroad(state, direction = "NONE") {
   diagnosticState.crossroadCode = selected.code;
   diagnosticState.crossroadPhase = state === "TIMEOUT" ? "TIMEOUT" : state;
   diagnosticState.crossroadDirection = state === "NORMAL" || state === "TIMEOUT" ? "NONE" : direction;
+}
+
+function setCrossroadDetection(enabled) {
+  diagnosticState.crossroadEnabled = Boolean(enabled);
+  ui.crossroadToggleButton.dataset.command = enabled ? "C" : "Q";
+  ui.crossroadToggleButton.innerHTML = enabled ? "关闭十字检测 <b>C</b>" : "开启十字检测 <b>Q</b>";
+  ui.crossroadToggleButton.classList.toggle("selected", enabled);
+  ui.crossroadToggleButton.setAttribute("aria-pressed", enabled ? "true" : "false");
+  if (!enabled) updateCrossroad("DISABLED");
+  else if (diagnosticState.crossroadPhase === "DISABLED") updateCrossroad("NORMAL");
 }
 
 function updateDistance(value) {
@@ -813,12 +831,12 @@ function downloadBlob(blob, filename) {
 function exportSensorCsv() {
   if (!sensorHistory.length) return;
   const firstTime = sensorHistory[0].time;
-  const rows = ["时间,相对秒,L1,L2,R1,R2,ERROR,LD,RD,LS,RS,CROSS,PHASE,DIR,PID_MODE"];
+  const rows = ["时间,相对秒,L1,L2,R1,R2,ERROR,LD,RD,LS,RS,CROSS,CE,PHASE,DIR,PID_MODE"];
   sensorHistory.forEach((point) => {
     rows.push([
       new Date(point.time).toISOString(), ((point.time - firstTime) / 1000).toFixed(3),
       point.l1, point.l2, point.r1, point.r2, point.error, point.ld, point.rd,
-      point.ls, point.rs, point.cross, point.phase, point.direction, point.pidMode
+      point.ls, point.rs, point.cross, point.ce, point.phase, point.direction, point.pidMode
     ].join(","));
   });
   const blob = new Blob(["\uFEFF" + rows.join("\r\n")], { type: "text/csv;charset=utf-8" });
@@ -897,6 +915,7 @@ function buildParameterReport() {
     `ERROR=${diagnosticState.error}`, `LD=${diagnosticState.ld}`, `RD=${diagnosticState.rd}`,
     `LS=${diagnosticState.ls}`, `RS=${diagnosticState.rs}`,
     `CROSS=${diagnosticState.crossroadCode} (${diagnosticState.crossroad})`,
+    `CE=${diagnosticState.crossroadEnabled ? 1 : 0}`,
     `PHASE=${diagnosticState.crossroadPhase}`, `DIR=${diagnosticState.crossroadDirection}`,
     `PID_MODE=${diagnosticState.pidMode}`,
     `距离=${diagnosticState.distance}`, `障碍状态=${diagnosticState.obstacle}`,
@@ -934,6 +953,7 @@ function buildDiagnosticReport() {
     "[当前控制状态]",
     `速度=${diagnosticState.speed}%`,
     `循迹传感器=${diagnosticState.sensorEnabled ? "ON" : "OFF"}`,
+    `十字检测=${diagnosticState.crossroadEnabled ? "ON" : "OFF"}`,
     `自动避障=${diagnosticState.obstacleEnabled ? "ON" : "OFF"}`,
     `距离=${diagnosticState.distance}${/^\d+$/.test(String(diagnosticState.distance)) ? "cm" : ""}`,
     `障碍状态=${diagnosticState.obstacle}`,
@@ -959,7 +979,7 @@ function buildDiagnosticReport() {
     ...Object.entries(parameterDefinitions).map(([key, definition]) => `${key}=${confirmedParameters[key]}${definition.unit ? " " + definition.unit : ""}`),
     "",
     `[传感器历史数据，共${sensorHistory.length}条]`,
-    "时间,相对秒,L1,L2,R1,R2,ERROR,LD,RD,LS,RS,CROSS,PHASE,DIR,PID_MODE"
+    "时间,相对秒,L1,L2,R1,R2,ERROR,LD,RD,LS,RS,CROSS,CE,PHASE,DIR,PID_MODE"
   ];
 
   const firstTime = sensorHistory.length ? sensorHistory[0].time : 0;
@@ -967,7 +987,7 @@ function buildDiagnosticReport() {
     lines.push([
       new Date(point.time).toISOString(), ((point.time - firstTime) / 1000).toFixed(3),
       point.l1, point.l2, point.r1, point.r2, point.error, point.ld, point.rd,
-      point.ls, point.rs, point.cross, point.phase, point.direction, point.pidMode
+      point.ls, point.rs, point.cross, point.ce, point.phase, point.direction, point.pidMode
     ].join(","));
   });
 
@@ -1087,13 +1107,17 @@ document.querySelectorAll(".page-tab").forEach((button) => {
 
 document.querySelectorAll(".control-button").forEach((button) => {
   button.addEventListener("click", async () => {
-    const sent = await sendCommand(button.dataset.command);
+    const command = button.dataset.command;
+    const sent = await sendCommand(command);
     if (!sent) return;
     if (button === ui.sensorOnButton || button === ui.sensorOffButton) {
       selectMode(ui.sensorOnButton, ui.sensorOffButton, button === ui.sensorOnButton);
     }
     if (button === ui.obstacleOnButton || button === ui.obstacleOffButton) {
       selectMode(ui.obstacleOnButton, ui.obstacleOffButton, button === ui.obstacleOnButton);
+    }
+    if (button === ui.crossroadToggleButton) {
+      setCrossroadDetection(String(command).toUpperCase() === "Q");
     }
   });
 });
@@ -1209,7 +1233,8 @@ setInterval(() => { if (!chartPaused) scheduleChartDraw(); }, 1000);
 setConnected(false);
 const rememberedDeviceOnLoad = updateRememberedDeviceUi();
 selectSpeed(3);
-selectMode(ui.sensorOnButton, ui.sensorOffButton, false);
+selectMode(ui.sensorOnButton, ui.sensorOffButton, true);
+setCrossroadDetection(true);
 selectMode(ui.obstacleOnButton, ui.obstacleOffButton, true);
 updateCrossroad("NORMAL");
 updateChartControls();

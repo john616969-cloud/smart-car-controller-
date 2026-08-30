@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta name="theme-color" content="#050b14">
   <title>智能车控制台</title>
-  <link rel="stylesheet" href="styles.css?v=20260829-5">
+  <link rel="stylesheet" href="styles.css?v=20260830-1">
 </head>
 <body>
   <main class="app-shell">
@@ -135,6 +135,12 @@
         <div class="mode-switch">
           <button class="mode-button control-button" id="sensorOnButton" data-command="T" type="button" disabled>接入传感器 <b>T</b></button>
           <button class="mode-button selected control-button" id="sensorOffButton" data-command="N" type="button" disabled>关闭传感器 <b>N</b></button>
+        </div>
+      </div>
+      <div class="mode-row">
+        <p class="mode-label">十字路口检测</p>
+        <div class="mode-switch single">
+          <button class="mode-button selected control-button" id="crossroadToggleButton" data-command="C" type="button" disabled>关闭十字检测 <b>C</b></button>
         </div>
       </div>
       <div class="mode-row">
@@ -328,6 +334,6 @@
     </section>
   </div>
 
-  <script src="app.js?v=20260829-6"></script>
+  <script src="app.js?v=20260830-1"></script>
 </body>
 </html>
