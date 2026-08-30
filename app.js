@@ -49,6 +49,7 @@ const BLE_CHUNK_SIZE = 20;
 const BLE_CHUNK_GAP_MS = 15;
 const PARAMETER_REPLY_TIMEOUT_MS = 4500;
 const PARAMETER_TIMEOUT_RETRY_COUNT = 1;
+const GEAR_REPLY_TIMEOUT_MS = 800;
 const REMEMBERED_DEVICE_KEY = "smartCarRememberedBluetoothDevice";
 const RECONNECT_DELAY_MS = 2000;
 const RECONNECT_MAX_ATTEMPTS = 3;
@@ -65,6 +66,9 @@ let reconnectTimer = null;
 let connectionInProgress = false;
 let suppressDisconnectEvent = false;
 const pendingParameterRequests = new Map();
+let confirmedGear = 0;
+let pendingGearParameterRead = 0;
+let pendingGearReadTimer = null;
 
 function waitMilliseconds(milliseconds) {
   return new Promise((resolve) => setTimeout(resolve, milliseconds));
@@ -318,6 +322,9 @@ function handleDisconnected(event) {
   if (suppressDisconnectEvent) return;
   uartCharacteristic = null;
   receiveBuffer = "";
+  clearTimeout(pendingGearReadTimer);
+  pendingGearReadTimer = null;
+  pendingGearParameterRead = 0;
   pendingParameterRequests.forEach((pending) => { clearTimeout(pending.timer); pending.resolve(false); });
   pendingParameterRequests.clear();
   setConnected(false);
@@ -564,12 +571,25 @@ function processLine(line) {
   if (parameterValueMatch) handleParameterValue(parameterValueMatch[1].toUpperCase(), Number(parameterValueMatch[2]));
   if (parameterErrorMatch) handleParameterError(parameterErrorMatch[1].toUpperCase(), parameterErrorMatch[2].toUpperCase());
   if (/^PARAMS\s+END$/i.test(line)) {
-    ui.parameterSyncState.textContent = "已与芯片同步";
+    ui.parameterSyncState.textContent = confirmedGear > 0 ? `已同步 · ${confirmedGear}档` : "已与芯片同步";
     ui.parameterSyncState.className = "parameter-sync-state synced";
   }
 
   const speedMatch = line.match(/\bSPEED\s*=\s*(\d+)%/i);
-  if (speedMatch) selectSpeed(Math.round(Number(speedMatch[1]) / 10));
+  const gearMatch = line.match(/\bGEAR\s*=\s*([1-9])\b/i);
+  if (gearMatch) {
+    confirmedGear = Number(gearMatch[1]);
+    selectSpeed(confirmedGear);
+    if (pendingGearParameterRead === confirmedGear) {
+      pendingGearParameterRead = 0;
+      clearTimeout(pendingGearReadTimer);
+      pendingGearReadTimer = null;
+      /* 给上一条 BLE 写入留出结束时间，避免 iOS 报 GATT operation in progress。 */
+      setTimeout(requestParameters, 50);
+    }
+  } else if (speedMatch) {
+    selectSpeed(Math.round(Number(speedMatch[1]) / 10));
+  }
 
   const crossroadEnableMatch = line.match(/\bCE\s*=\s*([01])\b/i);
   const sensorMatch = line.match(/L1\s*=\s*(\d+).*?L2\s*=\s*(\d+).*?R1\s*=\s*(\d+).*?R2\s*=\s*(\d+).*?ERROR\s*=\s*(-?\d+).*?ML\s*=\s*(\d+).*?MR\s*=\s*(\d+)/i);
@@ -1105,12 +1125,24 @@ function selectSpeed(speed) {
   });
 }
 
-/* 换挡后芯片会切换到该档独立 PD；稍后重新读取，保证手机显示的是当前档参数。 */
+/* 换挡后等待芯片返回 GEAR 确认，再读取该档独立 PD；超时后执行一次兜底读取。 */
 async function selectAndSendSpeed(speed) {
   const gear = Math.max(1, Math.min(9, Number(speed)));
   selectSpeed(gear);
+  clearTimeout(pendingGearReadTimer);
+  pendingGearReadTimer = null;
+  pendingGearParameterRead = gear;
+  ui.parameterSyncState.textContent = `正在切换到 ${gear} 档…`;
+  ui.parameterSyncState.className = "parameter-sync-state";
   if (await sendCommand(String(gear))) {
-    setTimeout(requestParameters, 150);
+    pendingGearReadTimer = setTimeout(() => {
+      if (pendingGearParameterRead !== gear) return;
+      pendingGearParameterRead = 0;
+      pendingGearReadTimer = null;
+      requestParameters();
+    }, GEAR_REPLY_TIMEOUT_MS);
+  } else {
+    pendingGearParameterRead = 0;
   }
 }
 
