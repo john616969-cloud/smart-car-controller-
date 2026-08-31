@@ -101,7 +101,7 @@ const diagnosticState = {
   deviceName: "--",
   speed: 30,
   sensorEnabled: true,
-  crossroadEnabled: true,
+  crossroadEnabled: false,
   obstacleEnabled: true,
   distance: "--",
   obstacle: "--",
@@ -1303,9 +1303,9 @@ setConnected(false);
 const rememberedDeviceOnLoad = updateRememberedDeviceUi();
 selectSpeed(3);
 selectMode(ui.sensorOnButton, ui.sensorOffButton, true);
-setCrossroadDetection(true);
+setCrossroadDetection(false);
 selectMode(ui.obstacleOnButton, ui.obstacleOffButton, true);
-updateCrossroad("NORMAL");
+updateCrossroad("DISABLED");
 updateChartControls();
 scheduleChartDraw();
 if (rememberedDeviceOnLoad) {
