@@ -89,7 +89,7 @@ const parameterDefinitions = {
   CROSS_APPROACH_ERROR: { label: "接近误差阈值", unit: "", min: 100, max: 3000, step: 50, defaultValue: 900 },
   CROSS_OUTER_MIN: { label: "入口侧外传感器下限", unit: "", min: 0, max: 4095, step: 25, defaultValue: 350 },
   CROSS_DUAL_PEAK_MIN: { label: "十字双峰下限", unit: "", min: 0, max: 4095, step: 50, defaultValue: 1700 },
-  CROSS_OPPOSITE_INNER_MAX: { label: "对侧内传感器上限", unit: "", min: 0, max: 4095, step: 25, defaultValue: 500 },
+  CROSS_OPPOSITE_INNER_MAX: { label: "右入口 L1 上限", unit: "", min: 0, max: 4095, step: 25, defaultValue: 500 },
   CROSS_SIDE_SUM_MIN: { label: "入口侧和值下限", unit: "", min: 100, max: 8190, step: 50, defaultValue: 2000 },
   CROSS_EXIT_ERROR: { label: "退出误差上限", unit: "", min: 0, max: 3000, step: 50, defaultValue: 500 },
   CROSS_EXIT_SUM: { label: "退出左右和值上限", unit: "", min: 100, max: 8190, step: 50, defaultValue: 1200 },
