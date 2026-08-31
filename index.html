@@ -162,6 +162,22 @@
       </div>
       <p class="parameter-help">修改后立即生效，但只保存在芯片 RAM；重新上电会恢复代码默认值。</p>
 
+      <section class="voltage-selector" aria-labelledby="voltageSelectorTitle">
+        <div class="voltage-selector-heading">
+          <div><strong id="voltageSelectorTitle">电池电压档位</strong><span>手动选择后加载该电压与当前速度档对应的 PID</span></div>
+          <output id="voltageReadout">8.0V</output>
+        </div>
+        <div class="voltage-presets" id="voltagePresets">
+          <button class="voltage-button" data-voltage="81" type="button" disabled>8.1V</button>
+          <button class="voltage-button selected" data-voltage="80" type="button" disabled>8.0V</button>
+          <button class="voltage-button" data-voltage="79" type="button" disabled>7.9V</button>
+          <button class="voltage-button" data-voltage="78" type="button" disabled>7.8V</button>
+          <button class="voltage-button" data-voltage="77" type="button" disabled>7.7V</button>
+          <button class="voltage-button" data-voltage="76" type="button" disabled>7.6V</button>
+          <button class="voltage-button" data-voltage="75" type="button" disabled>7.5V</button>
+        </div>
+      </section>
+
       <div class="parameter-toolbar">
         <button class="parameter-action" id="readParametersButton" type="button" disabled>读取芯片参数</button>
         <button class="parameter-action primary" id="applyAllParametersButton" type="button" disabled>应用全部</button>
@@ -344,6 +360,6 @@
     </section>
   </div>
 
-  <script src="app.js?v=20260831-1"></script>
+  <script src="app.js?v=20260831-2"></script>
 </body>
 </html>

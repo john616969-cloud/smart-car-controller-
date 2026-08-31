@@ -13,6 +13,7 @@ const ui = {
   distanceGauge: $("distanceGauge"), distanceValue: $("distanceValue"), distanceUnit: $("distanceUnit"),
   obstacleState: $("obstacleState"), obstacleChinese: $("obstacleChinese"), obstacleValue: $("obstacleValue"),
   speedSlider: $("speedSlider"), speedReadout: $("speedReadout"), speedPresets: $("speedPresets"),
+  voltagePresets: $("voltagePresets"), voltageReadout: $("voltageReadout"),
   sensorOnButton: $("sensorOnButton"), sensorOffButton: $("sensorOffButton"),
   crossroadToggleButton: $("crossroadToggleButton"),
   obstacleOnButton: $("obstacleOnButton"), obstacleOffButton: $("obstacleOffButton"),
@@ -69,6 +70,9 @@ const pendingParameterRequests = new Map();
 let confirmedGear = 0;
 let pendingGearParameterRead = 0;
 let pendingGearReadTimer = null;
+let confirmedVoltageLevel = 80;
+let pendingVoltageLevel = 0;
+let pendingVoltageTimer = null;
 
 function waitMilliseconds(milliseconds) {
   return new Promise((resolve) => setTimeout(resolve, milliseconds));
@@ -100,6 +104,7 @@ const diagnosticState = {
   connected: false,
   deviceName: "--",
   speed: 30,
+  voltageLevel: 80,
   sensorEnabled: true,
   crossroadEnabled: false,
   obstacleEnabled: true,
@@ -130,7 +135,7 @@ function setConnected(connected) {
   ui.connectButton.disabled = connected;
   ui.reconnectButton.disabled = connected || connectionInProgress;
   ui.disconnectButton.disabled = !connected;
-  document.querySelectorAll(".control-button, #speedSlider, #speedPresets button")
+  document.querySelectorAll(".control-button, #speedSlider, #speedPresets button, #voltagePresets button")
     .forEach((element) => { element.disabled = !connected; });
   document.querySelectorAll(".parameter-action")
     .forEach((element) => { element.disabled = !connected; });
@@ -437,6 +442,16 @@ function validateParameterValues(showErrors = true) {
 }
 
 function handleParameterValue(key, value) {
+  if (key === "VOLTAGE_LEVEL") {
+    if (value < 75 || value > 81) return;
+    confirmedVoltageLevel = value;
+    diagnosticState.voltageLevel = value;
+    selectVoltageLevel(value);
+    if (pendingVoltageTimer) clearTimeout(pendingVoltageTimer);
+    pendingVoltageTimer = null;
+    pendingVoltageLevel = 0;
+    return;
+  }
   if (!parameterDefinitions[key]) return;
   confirmedParameters[key] = value;
   const input = getParameterInput(key);
@@ -453,6 +468,16 @@ function handleParameterValue(key, value) {
 
 function handleParameterError(key, reason) {
   const labels = { RANGE: "数值超出范围", RELATION: "与另一参数关系不正确", FORMAT: "命令格式错误", UNKNOWN: "参数名未知" };
+  if (key === "VOLTAGE_LEVEL") {
+    if (pendingVoltageTimer) clearTimeout(pendingVoltageTimer);
+    pendingVoltageTimer = null;
+    pendingVoltageLevel = 0;
+    selectVoltageLevel(confirmedVoltageLevel);
+    ui.parameterSyncState.textContent = "电压档切换失败";
+    ui.parameterSyncState.className = "parameter-sync-state error";
+    setMessage(labels[reason] || reason, true);
+    return;
+  }
   const targetKey = parameterDefinitions[key] ? key : pendingParameterRequests.keys().next().value;
   const pending = targetKey ? pendingParameterRequests.get(targetKey) : null;
   if (targetKey && parameterDefinitions[targetKey]) {
@@ -571,7 +596,8 @@ function processLine(line) {
   if (parameterValueMatch) handleParameterValue(parameterValueMatch[1].toUpperCase(), Number(parameterValueMatch[2]));
   if (parameterErrorMatch) handleParameterError(parameterErrorMatch[1].toUpperCase(), parameterErrorMatch[2].toUpperCase());
   if (/^PARAMS\s+END$/i.test(line)) {
-    ui.parameterSyncState.textContent = confirmedGear > 0 ? `已同步 · ${confirmedGear}档` : "已与芯片同步";
+    const voltageText = `${(confirmedVoltageLevel / 10).toFixed(1)}V`;
+    ui.parameterSyncState.textContent = confirmedGear > 0 ? `已同步 · ${voltageText} · ${confirmedGear}档` : `已同步 · ${voltageText}`;
     ui.parameterSyncState.className = "parameter-sync-state synced";
   }
 
@@ -950,6 +976,7 @@ function buildParameterReport() {
     `导出时间=${new Date().toISOString()}`,
     `连接状态=${diagnosticState.connected ? "已连接" : "未连接"}`,
     `BLE设备=${diagnosticState.deviceName}`,
+    `当前电压档=${(diagnosticState.voltageLevel / 10).toFixed(1)}V`,
     "说明=参数只在本次上电期间有效，芯片复位后恢复源码默认值",
     "",
     "[运行参数]"
@@ -1001,6 +1028,7 @@ function buildDiagnosticReport() {
     "",
     "[当前控制状态]",
     `速度=${diagnosticState.speed}%`,
+    `电压档=${(diagnosticState.voltageLevel / 10).toFixed(1)}V`,
     `循迹传感器=${diagnosticState.sensorEnabled ? "ON" : "OFF"}`,
     `十字检测=${diagnosticState.crossroadEnabled ? "ON" : "OFF"}`,
     `自动避障=${diagnosticState.obstacleEnabled ? "ON" : "OFF"}`,
@@ -1125,6 +1153,38 @@ function selectSpeed(speed) {
   });
 }
 
+function selectVoltageLevel(level) {
+  const value = Math.max(75, Math.min(81, Number(level)));
+  ui.voltageReadout.textContent = `${(value / 10).toFixed(1)}V`;
+  ui.voltagePresets.querySelectorAll("button").forEach((button) => {
+    button.classList.toggle("selected", Number(button.dataset.voltage) === value);
+  });
+}
+
+/* 电压由芯片确认后才记为成功；芯片随后会主动返回当前组合的全部参数。 */
+async function selectAndSendVoltage(level) {
+  const value = Math.max(75, Math.min(81, Number(level)));
+  const previous = confirmedVoltageLevel;
+  if (value === confirmedVoltageLevel && pendingVoltageLevel === 0) return;
+  if (pendingVoltageTimer) clearTimeout(pendingVoltageTimer);
+  pendingVoltageLevel = value;
+  selectVoltageLevel(value);
+  ui.parameterSyncState.textContent = `正在切换到 ${(value / 10).toFixed(1)}V…`;
+  ui.parameterSyncState.className = "parameter-sync-state";
+  if (!(await sendCommand(`@SET VOLTAGE_LEVEL ${value}\n`))) {
+    pendingVoltageLevel = 0;
+    selectVoltageLevel(previous);
+    return;
+  }
+  pendingVoltageTimer = setTimeout(() => {
+    pendingVoltageTimer = null;
+    pendingVoltageLevel = 0;
+    selectVoltageLevel(confirmedVoltageLevel);
+    ui.parameterSyncState.textContent = "电压档切换超时";
+    ui.parameterSyncState.className = "parameter-sync-state error";
+  }, PARAMETER_REPLY_TIMEOUT_MS);
+}
+
 /* 换挡后等待芯片返回 GEAR 确认，再读取该档独立 PD；超时后执行一次兜底读取。 */
 async function selectAndSendSpeed(speed) {
   const gear = Math.max(1, Math.min(9, Number(speed)));
@@ -1198,6 +1258,9 @@ ui.speedPresets.querySelectorAll("button").forEach((button) => {
   button.addEventListener("click", () => {
     selectAndSendSpeed(button.dataset.speed);
   });
+});
+ui.voltagePresets.querySelectorAll("button").forEach((button) => {
+  button.addEventListener("click", () => selectAndSendVoltage(button.dataset.voltage));
 });
 
 document.querySelectorAll("[data-param-delta]").forEach((button) => {
@@ -1302,6 +1365,7 @@ setInterval(() => { if (!chartPaused) scheduleChartDraw(); }, 1000);
 setConnected(false);
 const rememberedDeviceOnLoad = updateRememberedDeviceUi();
 selectSpeed(3);
+selectVoltageLevel(80);
 selectMode(ui.sensorOnButton, ui.sensorOffButton, true);
 setCrossroadDetection(false);
 selectMode(ui.obstacleOnButton, ui.obstacleOffButton, true);
