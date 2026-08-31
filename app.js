@@ -88,6 +88,7 @@ const parameterDefinitions = {
   APPROACH_PID_LIMIT: { label: "接近阶段最大差速", unit: "%", min: 0, max: 20, step: 1, defaultValue: 5 },
   CROSS_APPROACH_ERROR: { label: "接近误差阈值", unit: "", min: 100, max: 3000, step: 50, defaultValue: 900 },
   CROSS_OUTER_MIN: { label: "入口侧外传感器下限", unit: "", min: 0, max: 4095, step: 25, defaultValue: 350 },
+  CROSS_DUAL_PEAK_MIN: { label: "十字双峰下限", unit: "", min: 0, max: 4095, step: 50, defaultValue: 1700 },
   CROSS_OPPOSITE_INNER_MAX: { label: "对侧内传感器上限", unit: "", min: 0, max: 4095, step: 25, defaultValue: 500 },
   CROSS_SIDE_SUM_MIN: { label: "入口侧和值下限", unit: "", min: 100, max: 8190, step: 50, defaultValue: 2000 },
   CROSS_EXIT_ERROR: { label: "退出误差上限", unit: "", min: 0, max: 3000, step: 50, defaultValue: 500 },
@@ -555,7 +556,7 @@ async function applyAllParameters() {
 
   const order = ["PID_DEADBAND", "PID_DIVISOR", "PID_LIMIT", "PID_D_GAIN",
     "APPROACH_PID_DIVISOR", "APPROACH_PID_D_GAIN", "APPROACH_PID_LIMIT",
-    "CROSS_APPROACH_ERROR", "CROSS_OUTER_MIN", "CROSS_OPPOSITE_INNER_MAX",
+    "CROSS_APPROACH_ERROR", "CROSS_OUTER_MIN", "CROSS_DUAL_PEAK_MIN", "CROSS_OPPOSITE_INNER_MAX",
     "CROSS_EXIT_ERROR", "CROSS_SEQUENCE_MS"];
   if (result.values.CROSS_SIDE_SUM_MIN <= confirmedParameters.CROSS_EXIT_SUM) order.push("CROSS_EXIT_SUM", "CROSS_SIDE_SUM_MIN");
   else order.push("CROSS_SIDE_SUM_MIN", "CROSS_EXIT_SUM");

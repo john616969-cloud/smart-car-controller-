@@ -235,6 +235,11 @@
           <div class="parameter-editor"><button data-param-delta="-1" type="button">−</button><input class="parameter-input" data-key="CROSS_OUTER_MIN" type="number" min="0" max="4095" step="25" value="350" inputmode="numeric"><button data-param-delta="1" type="button">＋</button></div>
           <button class="parameter-apply parameter-action" type="button" disabled>应用</button><span class="parameter-item-state">默认值</span>
         </div>
+        <div class="parameter-row" data-parameter="CROSS_DUAL_PEAK_MIN">
+          <div class="parameter-description"><strong>十字双峰下限</strong><span>R1、L2 必须同时达到；增大可排除普通弯道</span></div>
+          <div class="parameter-editor"><button data-param-delta="-1" type="button">−</button><input class="parameter-input" data-key="CROSS_DUAL_PEAK_MIN" type="number" min="0" max="4095" step="50" value="1700" inputmode="numeric"><button data-param-delta="1" type="button">＋</button></div>
+          <button class="parameter-apply parameter-action" type="button" disabled>应用</button><span class="parameter-item-state">默认值</span>
+        </div>
         <div class="parameter-row" data-parameter="CROSS_OPPOSITE_INNER_MAX">
           <div class="parameter-description"><strong>对侧内传感器上限</strong><span>左候选看 R1，右候选看 L1；增大更宽松</span></div>
           <div class="parameter-editor"><button data-param-delta="-1" type="button">−</button><input class="parameter-input" data-key="CROSS_OPPOSITE_INNER_MAX" type="number" min="0" max="4095" step="25" value="500" inputmode="numeric"><button data-param-delta="1" type="button">＋</button></div>
@@ -360,6 +365,6 @@
     </section>
   </div>
 
-  <script src="app.js?v=20260831-2"></script>
+  <script src="app.js?v=20260831-3"></script>
 </body>
 </html>
