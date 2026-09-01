@@ -7,12 +7,14 @@ const CHARACTERISTIC_UUID = "0000ffe1-0000-1000-8000-00805f9b34fb";
 const $ = (id) => document.getElementById(id);
 const ui = {
   connectionState: $("connectionState"), connectionText: $("connectionText"),
+  themeToggleButton: $("themeToggleButton"),
   connectButton: $("connectButton"), reconnectButton: $("reconnectButton"), disconnectButton: $("disconnectButton"),
   rememberedDeviceLine: $("rememberedDeviceLine"), rememberedDeviceName: $("rememberedDeviceName"),
   deviceName: $("deviceName"), message: $("message"),
   distanceGauge: $("distanceGauge"), distanceValue: $("distanceValue"), distanceUnit: $("distanceUnit"),
   obstacleState: $("obstacleState"), obstacleChinese: $("obstacleChinese"), obstacleValue: $("obstacleValue"),
   speedSlider: $("speedSlider"), speedReadout: $("speedReadout"), speedPresets: $("speedPresets"),
+  gearContextValue: $("gearContextValue"), voltageContextValue: $("voltageContextValue"),
   voltagePresets: $("voltagePresets"), voltageReadout: $("voltageReadout"),
   sensorOnButton: $("sensorOnButton"), sensorOffButton: $("sensorOffButton"),
   crossroadToggleButton: $("crossroadToggleButton"),
@@ -54,6 +56,7 @@ const GEAR_REPLY_TIMEOUT_MS = 800;
 const REMEMBERED_DEVICE_KEY = "smartCarRememberedBluetoothDevice";
 const RECONNECT_DELAY_MS = 2000;
 const RECONNECT_MAX_ATTEMPTS = 3;
+const THEME_STORAGE_KEY = "smartCarControllerTheme";
 const sensorHistory = [];
 const diagnosticLogs = [];
 let chartPaused = false;
@@ -142,6 +145,21 @@ function setConnected(connected) {
     .forEach((element) => { element.disabled = !connected; });
   ui.parameterSyncState.textContent = connected ? "等待读取" : "等待连接";
   ui.parameterSyncState.className = "parameter-sync-state";
+  document.body.classList.toggle("is-connected", connected);
+}
+
+function applyTheme(theme) {
+  const value = theme === "light" ? "light" : "dark";
+  document.documentElement.dataset.theme = value;
+  ui.themeToggleButton.setAttribute("aria-pressed", value === "light" ? "true" : "false");
+  ui.themeToggleButton.setAttribute("aria-label", value === "light" ? "切换深色控制主题" : "切换浅色报告主题");
+  ui.themeToggleButton.innerHTML = value === "light" ? '<span aria-hidden="true">☾</span><b>深色</b>' : '<span aria-hidden="true">☀</span><b>浅色</b>';
+  try { localStorage.setItem(THEME_STORAGE_KEY, value); } catch (_) {}
+  scheduleChartDraw();
+}
+
+function toggleTheme() {
+  applyTheme(document.documentElement.dataset.theme === "light" ? "dark" : "light");
 }
 
 function getRememberedDeviceRecord() {
@@ -600,6 +618,7 @@ function processLine(line) {
     const voltageText = `${(confirmedVoltageLevel / 10).toFixed(1)}V`;
     ui.parameterSyncState.textContent = confirmedGear > 0 ? `已同步 · ${voltageText} · ${confirmedGear}档` : `已同步 · ${voltageText}`;
     ui.parameterSyncState.className = "parameter-sync-state synced";
+    ui.speedPresets.querySelectorAll("button").forEach((button) => button.classList.remove("pending"));
   }
 
   const speedMatch = line.match(/\bSPEED\s*=\s*(\d+)%/i);
@@ -607,6 +626,7 @@ function processLine(line) {
   if (gearMatch) {
     confirmedGear = Number(gearMatch[1]);
     selectSpeed(confirmedGear);
+    ui.speedPresets.querySelectorAll("button").forEach((button) => button.classList.remove("pending"));
     if (pendingGearParameterRead === confirmedGear) {
       pendingGearParameterRead = 0;
       clearTimeout(pendingGearReadTimer);
@@ -811,7 +831,7 @@ function scheduleChartDraw() {
   });
 }
 
-function drawSensorChart() {
+function drawSensorChart(forceLight = false) {
   const canvas = ui.sensorChart;
   const rect = canvas.getBoundingClientRect();
   if (rect.width < 10 || rect.height < 10) return;
@@ -834,7 +854,13 @@ function drawSensorChart() {
   const windowEnd = chartPaused ? clampChartEnd(chartPausedAt) : Date.now();
   const windowStart = windowEnd - CHART_WINDOW_MS;
 
-  ctx.fillStyle = "#030a12";
+  const light = forceLight || document.documentElement.dataset.theme === "light";
+  const chartColors = light ? {
+    background: "#ffffff", grid: "rgba(67,91,116,.18)", gridSoft: "rgba(67,91,116,.11)", text: "#64748b"
+  } : {
+    background: "#030a12", grid: "rgba(80,116,150,.23)", gridSoft: "rgba(80,116,150,.16)", text: "#667b91"
+  };
+  ctx.fillStyle = chartColors.background;
   ctx.fillRect(0, 0, width, height);
   ctx.font = "10px -apple-system, BlinkMacSystemFont, sans-serif";
   ctx.lineWidth = 1;
@@ -842,9 +868,9 @@ function drawSensorChart() {
 
   [0, 1024, 2048, 3072, 4095].forEach((value) => {
     const y = plot.top + plotHeight - (value / 4095) * plotHeight;
-    ctx.strokeStyle = "rgba(80,116,150,.23)";
+    ctx.strokeStyle = chartColors.grid;
     ctx.beginPath(); ctx.moveTo(plot.left, y); ctx.lineTo(width - plot.right, y); ctx.stroke();
-    ctx.fillStyle = "#667b91";
+    ctx.fillStyle = chartColors.text;
     ctx.textAlign = "right";
     ctx.fillText(String(value), plot.left - 6, y);
   });
@@ -852,9 +878,9 @@ function drawSensorChart() {
   [0, 1, 2, 3, 4].forEach((tick, index) => {
     const x = plot.left + (index / 4) * plotWidth;
     const tickTime = windowStart + (tick / 4) * CHART_WINDOW_MS;
-    ctx.strokeStyle = "rgba(80,116,150,.16)";
+    ctx.strokeStyle = chartColors.gridSoft;
     ctx.beginPath(); ctx.moveTo(x, plot.top); ctx.lineTo(x, height - plot.bottom); ctx.stroke();
-    ctx.fillStyle = "#667b91";
+    ctx.fillStyle = chartColors.text;
     ctx.textAlign = index === 0 ? "left" : index === 4 ? "right" : "center";
     ctx.fillText(new Date(tickTime).toLocaleTimeString("zh-CN", { hour12: false, minute: "2-digit", second: "2-digit" }), x, height - 12);
   });
@@ -865,7 +891,7 @@ function drawSensorChart() {
   );
 
   if (!visible.length) {
-    ctx.fillStyle = "#65798f";
+    ctx.fillStyle = chartColors.text;
     ctx.font = "13px -apple-system, BlinkMacSystemFont, sans-serif";
     ctx.textAlign = "center";
     ctx.fillText("等待传感器数据", plot.left + plotWidth / 2, plot.top + plotHeight / 2);
@@ -952,7 +978,7 @@ function closeExportModal() {
 function openSensorImage() {
   if (!sensorHistory.length) return;
   try {
-    drawSensorChart();
+    drawSensorChart(true);
     const dataUrl = ui.sensorChart.toDataURL("image/png");
     if (!dataUrl.startsWith("data:image/png")) throw new Error("图片格式生成失败");
     openExportModal({
@@ -963,6 +989,7 @@ function openSensorImage() {
       blob: dataUrlToBlob(dataUrl),
       dataUrl
     });
+    scheduleChartDraw();
   } catch (error) {
     setMessage("曲线图片生成失败：" + error.message, true);
     addLog("曲线图片生成失败：" + error.message, "error");
@@ -1147,7 +1174,8 @@ function markAlive() {
 function selectSpeed(speed) {
   const value = Math.max(1, Math.min(9, Number(speed)));
   ui.speedSlider.value = String(value);
-  ui.speedReadout.textContent = `${value * 10}%`;
+  ui.speedReadout.textContent = `当前 ${value} 档`;
+  ui.gearContextValue.textContent = `${value} 档`;
   diagnosticState.speed = value * 10;
   ui.speedPresets.querySelectorAll("button").forEach((button) => {
     button.classList.toggle("selected", Number(button.dataset.speed) === value);
@@ -1157,6 +1185,7 @@ function selectSpeed(speed) {
 function selectVoltageLevel(level) {
   const value = Math.max(75, Math.min(81, Number(level)));
   ui.voltageReadout.textContent = `${(value / 10).toFixed(1)}V`;
+  ui.voltageContextValue.textContent = `${(value / 10).toFixed(1)}V`;
   ui.voltagePresets.querySelectorAll("button").forEach((button) => {
     button.classList.toggle("selected", Number(button.dataset.voltage) === value);
   });
@@ -1193,6 +1222,9 @@ async function selectAndSendSpeed(speed) {
   clearTimeout(pendingGearReadTimer);
   pendingGearReadTimer = null;
   pendingGearParameterRead = gear;
+  ui.speedPresets.querySelectorAll("button").forEach((button) => {
+    button.classList.toggle("pending", Number(button.dataset.speed) === gear);
+  });
   ui.parameterSyncState.textContent = `正在切换到 ${gear} 档…`;
   ui.parameterSyncState.className = "parameter-sync-state";
   if (await sendCommand(String(gear))) {
@@ -1204,6 +1236,7 @@ async function selectAndSendSpeed(speed) {
     }, GEAR_REPLY_TIMEOUT_MS);
   } else {
     pendingGearParameterRead = 0;
+    ui.speedPresets.querySelectorAll("button").forEach((button) => button.classList.remove("pending"));
   }
 }
 
@@ -1231,9 +1264,19 @@ function selectPage(pageName) {
 ui.connectButton.addEventListener("click", connectBluetooth);
 ui.reconnectButton.addEventListener("click", () => reconnectRememberedDevice(false));
 ui.disconnectButton.addEventListener("click", disconnectBluetooth);
+ui.themeToggleButton.addEventListener("click", toggleTheme);
 
 document.querySelectorAll(".page-tab").forEach((button) => {
   button.addEventListener("click", () => selectPage(button.dataset.pageTarget));
+});
+
+document.querySelectorAll(".parameter-group").forEach((group) => {
+  group.addEventListener("toggle", () => {
+    if (!group.open) return;
+    document.querySelectorAll(".parameter-group").forEach((otherGroup) => {
+      if (otherGroup !== group) otherGroup.open = false;
+    });
+  });
 });
 
 document.querySelectorAll(".control-button").forEach((button) => {
@@ -1363,6 +1406,9 @@ document.addEventListener("keydown", (event) => {
 window.addEventListener("resize", scheduleChartDraw);
 setInterval(() => { if (!chartPaused) scheduleChartDraw(); }, 1000);
 
+let initialTheme = "dark";
+try { initialTheme = localStorage.getItem(THEME_STORAGE_KEY) === "light" ? "light" : "dark"; } catch (_) {}
+applyTheme(initialTheme);
 setConnected(false);
 const rememberedDeviceOnLoad = updateRememberedDeviceUi();
 selectSpeed(3);

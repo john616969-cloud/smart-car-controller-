@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta name="theme-color" content="#050b14">
   <title>智能车控制台</title>
-  <link rel="stylesheet" href="styles.css?v=20260831-2">
+  <link rel="stylesheet" href="styles.css?v=20260901-1">
 </head>
 <body>
   <main class="app-shell">
@@ -14,9 +14,12 @@
         <p class="eyebrow">STM32 智能车 24控卓越张怡慧</p>
         <h1>智能车控制台</h1>
       </div>
-      <div class="connection-state" id="connectionState" aria-live="polite">
-        <span class="state-dot"></span>
-        <span id="connectionText">未连接</span>
+      <div class="topbar-actions">
+        <button class="theme-toggle" id="themeToggleButton" type="button" aria-label="切换浅色报告主题" aria-pressed="false"><span aria-hidden="true">☀</span><b>浅色</b></button>
+        <div class="connection-state" id="connectionState" aria-live="polite">
+          <span class="state-dot"></span>
+          <span id="connectionText">未连接</span>
+        </div>
       </div>
     </header>
 
@@ -52,10 +55,10 @@
     </section>
 
     <nav class="page-tabs" aria-label="功能页面">
-      <button class="page-tab selected" data-page-target="control" type="button" aria-selected="true">控制</button>
-      <button class="page-tab" data-page-target="sensor" type="button" aria-selected="false">传感</button>
-      <button class="page-tab" data-page-target="tuning" type="button" aria-selected="false">调参</button>
-      <button class="page-tab" data-page-target="feedback" type="button" aria-selected="false">反馈</button>
+      <button class="page-tab selected" data-page-target="control" type="button" aria-selected="true"><span aria-hidden="true">⌁</span><b>控制</b></button>
+      <button class="page-tab" data-page-target="sensor" type="button" aria-selected="false"><span aria-hidden="true">◉</span><b>传感</b></button>
+      <button class="page-tab" data-page-target="tuning" type="button" aria-selected="false"><span aria-hidden="true">≡</span><b>调参</b></button>
+      <button class="page-tab" data-page-target="feedback" type="button" aria-selected="false"><span aria-hidden="true">▥</span><b>反馈</b></button>
     </nav>
 
     <section class="card distance-card page-card" data-page="sensor" aria-labelledby="distanceTitle" hidden>
@@ -72,6 +75,7 @@
           <div><strong id="obstacleChinese">等待数据</strong><span id="obstacleValue">--</span></div>
         </div>
       </div>
+      <div class="crossroad-state normal sensor-priority-state" id="crossroadState"><span>十字路口</span><strong id="crossroadValue">等待数据</strong></div>
     </section>
 
     <section class="card deviation-card page-card" data-page="feedback" aria-labelledby="deviationTitle" hidden>
@@ -113,16 +117,20 @@
 
     <section class="card page-card" data-page="control" aria-labelledby="speedTitle">
       <div class="section-heading compact">
-        <h2 id="speedTitle">速度</h2>
-        <strong class="speed-readout" id="speedReadout">30%</strong>
+        <div><p class="section-kicker">GEAR</p><h2 id="speedTitle">档位设置</h2></div>
+        <strong class="speed-readout" id="speedReadout">当前 3 档</strong>
       </div>
-      <input class="speed-slider" id="speedSlider" type="range" min="1" max="9" step="1" value="3" disabled aria-label="速度档位">
+      <input class="speed-slider visually-hidden" id="speedSlider" type="range" min="1" max="9" step="1" value="3" disabled aria-label="速度档位">
       <div class="speed-presets" id="speedPresets">
-        <button data-speed="1" type="button" disabled>10%</button>
-        <button class="selected" data-speed="3" type="button" disabled>30%</button>
-        <button data-speed="5" type="button" disabled>50%</button>
-        <button data-speed="7" type="button" disabled>70%</button>
-        <button data-speed="9" type="button" disabled>90%</button>
+        <button data-speed="1" type="button" disabled><strong>1</strong><small>档</small></button>
+        <button data-speed="2" type="button" disabled><strong>2</strong><small>档</small></button>
+        <button class="selected" data-speed="3" type="button" disabled><strong>3</strong><small>档</small></button>
+        <button data-speed="4" type="button" disabled><strong>4</strong><small>档</small></button>
+        <button data-speed="5" type="button" disabled><strong>5</strong><small>档</small></button>
+        <button data-speed="6" type="button" disabled><strong>6</strong><small>档</small></button>
+        <button data-speed="7" type="button" disabled><strong>7</strong><small>档</small></button>
+        <button data-speed="8" type="button" disabled><strong>8</strong><small>档</small></button>
+        <button data-speed="9" type="button" disabled><strong>9</strong><small>档</small></button>
       </div>
     </section>
 
@@ -158,9 +166,14 @@
           <p class="section-kicker">RAM RUNTIME TUNING</p>
           <h2 id="parameterTitle">实时参数调节</h2>
         </div>
-        <span class="parameter-sync-state" id="parameterSyncState">等待连接</span>
       </div>
       <p class="parameter-help">修改后立即生效，但只保存在芯片 RAM；重新上电会恢复代码默认值。</p>
+
+      <div class="tuning-context-bar" aria-label="当前调参组合">
+        <div><span>当前档位</span><strong id="gearContextValue">3 档</strong></div>
+        <div><span>电压档</span><strong id="voltageContextValue">8.0V</strong></div>
+        <div class="tuning-sync"><span>同步状态</span><strong class="parameter-sync-state" id="parameterSyncState">等待连接</strong></div>
+      </div>
 
       <section class="voltage-selector" aria-labelledby="voltageSelectorTitle">
         <div class="voltage-selector-heading">
@@ -184,8 +197,9 @@
         <button id="exportParametersButton" type="button">导出参数</button>
       </div>
 
-      <h3 class="parameter-group-title">循迹参数</h3>
-      <div class="parameter-list">
+      <details class="parameter-group" open>
+        <summary><span><strong>循迹 PID</strong><small>4 项 · 直线与弯道控制</small></span><i aria-hidden="true">⌄</i></summary>
+        <div class="parameter-list">
         <div class="parameter-row" data-parameter="PID_DEADBAND">
           <div class="parameter-description"><strong>误差死区</strong><span>增大更稳，减小更灵敏</span></div>
           <div class="parameter-editor"><button data-param-delta="-1" type="button">−</button><input class="parameter-input" data-key="PID_DEADBAND" type="number" min="0" max="500" step="10" value="180" inputmode="numeric"><button data-param-delta="1" type="button">＋</button></div>
@@ -206,6 +220,12 @@
           <div class="parameter-editor"><button data-param-delta="-1" type="button">−</button><input class="parameter-input" data-key="PID_D_GAIN" type="number" min="0" max="30" step="1" value="4" inputmode="numeric"><button data-param-delta="1" type="button">＋</button></div>
           <button class="parameter-apply parameter-action" type="button" disabled>应用</button><span class="parameter-item-state">默认值</span>
         </div>
+        </div>
+      </details>
+
+      <details class="parameter-group">
+        <summary><span><strong>接近十字</strong><small>3 项 · 路口前弱 PD</small></span><i aria-hidden="true">⌄</i></summary>
+        <div class="parameter-list">
         <div class="parameter-row" data-parameter="APPROACH_PID_DIVISOR">
           <div class="parameter-description"><strong>接近阶段 P 除数</strong><span>增大纠偏更弱，路口前更接近直行</span></div>
           <div class="parameter-editor"><button data-param-delta="-1" type="button">−</button><input class="parameter-input" data-key="APPROACH_PID_DIVISOR" type="number" min="100" max="1200" step="10" value="500" inputmode="numeric"><button data-param-delta="1" type="button">＋</button></div>
@@ -222,9 +242,11 @@
           <button class="parameter-apply parameter-action" type="button" disabled>应用</button><span class="parameter-item-state">默认值 · %</span>
         </div>
       </div>
+      </details>
 
-      <h3 class="parameter-group-title">十字路口参数</h3>
-      <div class="parameter-list">
+      <details class="parameter-group">
+        <summary><span><strong>十字判定</strong><small>7 项 · 入口、双峰与退出阈值</small></span><i aria-hidden="true">⌄</i></summary>
+        <div class="parameter-list">
         <div class="parameter-row" data-parameter="CROSS_APPROACH_ERROR">
           <div class="parameter-description"><strong>接近误差阈值</strong><span>正负两种方向均触发；减小更灵敏</span></div>
           <div class="parameter-editor"><button data-param-delta="-1" type="button">−</button><input class="parameter-input" data-key="CROSS_APPROACH_ERROR" type="number" min="100" max="3000" step="50" value="900" inputmode="numeric"><button data-param-delta="1" type="button">＋</button></div>
@@ -260,6 +282,12 @@
           <div class="parameter-editor"><button data-param-delta="-1" type="button">−</button><input class="parameter-input" data-key="CROSS_EXIT_SUM" type="number" min="100" max="8190" step="50" value="1200" inputmode="numeric"><button data-param-delta="1" type="button">＋</button></div>
           <button class="parameter-apply parameter-action" type="button" disabled>应用</button><span class="parameter-item-state">默认值</span>
         </div>
+        </div>
+      </details>
+
+      <details class="parameter-group">
+        <summary><span><strong>路口时间</strong><small>3 项 · 进入、直行与超时保护</small></span><i aria-hidden="true">⌄</i></summary>
+        <div class="parameter-list">
         <div class="parameter-row" data-parameter="CROSS_SEQUENCE_MS">
           <div class="parameter-description"><strong>入口序列时间</strong><span>接近信号后，等待进入中心的最长时间</span></div>
           <div class="parameter-editor"><button data-param-delta="-1" type="button">−</button><input class="parameter-input" data-key="CROSS_SEQUENCE_MS" type="number" min="100" max="3000" step="100" value="1000" inputmode="numeric"><button data-param-delta="1" type="button">＋</button></div>
@@ -276,6 +304,7 @@
           <button class="parameter-apply parameter-action" type="button" disabled>应用</button><span class="parameter-item-state">默认值 · ms</span>
         </div>
       </div>
+      </details>
     </section>
 
     <section class="card page-card" data-page="feedback" aria-labelledby="feedbackTitle" hidden>
@@ -300,11 +329,10 @@
         <div class="data-tile"><span>右增量 RD</span><strong id="rdValue">--</strong></div>
         <div class="data-tile"><span>左和值 LS</span><strong id="lsValue">--</strong></div>
         <div class="data-tile"><span>右和值 RS</span><strong id="rsValue">--</strong></div>
-        <div class="crossroad-state normal" id="crossroadState"><span>十字路口</span><strong id="crossroadValue">等待数据</strong></div>
       </div>
     </section>
 
-    <section class="card chart-card page-card" data-page="sensor" aria-labelledby="chartTitle" hidden>
+    <section class="card chart-card page-card" data-page="feedback" aria-labelledby="chartTitle" hidden>
       <div class="section-heading compact">
         <div>
           <p class="section-kicker" id="chartRangeLabel">实时 · 最近 60 秒</p>
@@ -332,15 +360,18 @@
       <p class="chart-note" id="chartViewStatus">在曲线上左右滑动，可查看最近30分钟的历史波形。</p>
     </section>
 
-    <section class="card log-card page-card" data-page="feedback" aria-labelledby="logTitle" hidden>
-      <div class="section-heading compact">
-        <h2 id="logTitle">通信日志</h2>
-        <button class="text-button" id="clearLogButton" type="button">清空</button>
+    <details class="card tools-card page-card" data-page="feedback" hidden>
+      <summary><span><strong>更多工具</strong><small>通信日志与排查信息</small></span><i aria-hidden="true">⌄</i></summary>
+      <div class="tools-card-content">
+        <div class="section-heading compact">
+          <h2 id="logTitle">通信日志</h2>
+          <button class="text-button" id="clearLogButton" type="button">清空</button>
+        </div>
+        <div class="log-window" id="logWindow" role="log" aria-live="polite">
+          <p class="muted">等待蓝牙数据…</p>
+        </div>
       </div>
-      <div class="log-window" id="logWindow" role="log" aria-live="polite">
-        <p class="muted">等待蓝牙数据…</p>
-      </div>
-    </section>
+    </details>
   </main>
 
   <div class="export-modal" id="exportModal" hidden>
@@ -365,6 +396,6 @@
     </section>
   </div>
 
-  <script src="app.js?v=20260831-3"></script>
+  <script src="app.js?v=20260901-1"></script>
 </body>
 </html>
