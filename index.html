@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta name="theme-color" content="#050b14">
   <title>智能车控制台</title>
-  <link rel="stylesheet" href="styles.css?v=20260901-1">
+  <link rel="stylesheet" href="styles.css?v=20260902-2">
 </head>
 <body>
   <main class="app-shell">
@@ -23,29 +23,41 @@
       </div>
     </header>
 
-    <section class="card bluetooth-card" aria-labelledby="bluetoothTitle">
+    <section class="card bluetooth-card" id="bluetoothCard" aria-labelledby="bluetoothTitle">
       <div class="section-heading">
         <div>
           <p class="section-kicker">无线连接</p>
           <h2 id="bluetoothTitle">蓝牙设备</h2>
+          <div class="bluetooth-summary" id="bluetoothSummary" aria-live="polite" hidden>
+            <span class="summary-dot" aria-hidden="true"></span>
+            <span id="bluetoothSummaryState">未连接</span>
+            <strong id="bluetoothSummaryDevice">--</strong>
+          </div>
         </div>
-        <span class="protocol">FFE0 / FFE1</span>
+        <div class="bluetooth-heading-actions">
+          <span class="protocol">FFE0 / FFE1</span>
+          <button class="bluetooth-collapse-button" id="bluetoothCollapseButton" type="button" aria-expanded="true" aria-controls="bluetoothDetails" aria-label="收起蓝牙设置">
+            <span aria-hidden="true">⌃</span><b>收起</b>
+          </button>
+        </div>
       </div>
-      <div class="connection-buttons">
-        <button class="button primary" id="connectButton" type="button">
-          <span class="button-icon">ᛒ</span>连接 JDY 设备
-        </button>
-        <button class="button secondary" id="reconnectButton" type="button" hidden>重连上次设备</button>
-        <button class="button secondary" id="disconnectButton" type="button" disabled>断开</button>
+      <div class="bluetooth-details" id="bluetoothDetails">
+        <div class="connection-buttons">
+          <button class="button primary" id="connectButton" type="button">
+            <span class="button-icon">ᛒ</span>连接 JDY 设备
+          </button>
+          <button class="button secondary" id="reconnectButton" type="button" hidden>重连上次设备</button>
+          <button class="button secondary" id="disconnectButton" type="button" disabled>断开</button>
+        </div>
+        <div class="remembered-device" id="rememberedDeviceLine" hidden>
+          <span>上次设备</span><strong id="rememberedDeviceName">--</strong>
+        </div>
+        <div class="device-line">
+          <span>BLE</span>
+          <strong id="deviceName">--</strong>
+        </div>
+        <p class="message" id="message" aria-live="polite">仅显示名称以 JDY 开头的蓝牙模块</p>
       </div>
-      <div class="remembered-device" id="rememberedDeviceLine" hidden>
-        <span>上次设备</span><strong id="rememberedDeviceName">--</strong>
-      </div>
-      <div class="device-line">
-        <span>BLE</span>
-        <strong id="deviceName">--</strong>
-      </div>
-      <p class="message" id="message" aria-live="polite">仅显示名称以 JDY 开头的蓝牙模块</p>
     </section>
 
     <section class="emergency-bar" aria-label="全局安全控制">
@@ -396,6 +408,6 @@
     </section>
   </div>
 
-  <script src="app.js?v=20260902-2"></script>
+  <script src="app.js?v=20260902-3"></script>
 </body>
 </html>

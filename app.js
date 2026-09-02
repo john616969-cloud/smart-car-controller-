@@ -13,6 +13,9 @@ const $ = (id) => document.getElementById(id);
 const ui = {
   connectionState: $("connectionState"), connectionText: $("connectionText"),
   themeToggleButton: $("themeToggleButton"),
+  bluetoothCard: $("bluetoothCard"), bluetoothCollapseButton: $("bluetoothCollapseButton"),
+  bluetoothDetails: $("bluetoothDetails"), bluetoothSummary: $("bluetoothSummary"),
+  bluetoothSummaryState: $("bluetoothSummaryState"), bluetoothSummaryDevice: $("bluetoothSummaryDevice"),
   connectButton: $("connectButton"), reconnectButton: $("reconnectButton"), disconnectButton: $("disconnectButton"),
   rememberedDeviceLine: $("rememberedDeviceLine"), rememberedDeviceName: $("rememberedDeviceName"),
   deviceName: $("deviceName"), message: $("message"),
@@ -137,10 +140,29 @@ function setMessage(text, isError = false) {
   ui.message.classList.toggle("error", isError);
 }
 
+function setBluetoothCardCollapsed(collapsed) {
+  const value = Boolean(collapsed);
+  ui.bluetoothCard.classList.toggle("is-collapsed", value);
+  ui.bluetoothDetails.hidden = value;
+  ui.bluetoothSummary.hidden = !value;
+  ui.bluetoothCollapseButton.setAttribute("aria-expanded", value ? "false" : "true");
+  ui.bluetoothCollapseButton.setAttribute("aria-label", value ? "展开蓝牙设置" : "收起蓝牙设置");
+  ui.bluetoothCollapseButton.innerHTML = value
+    ? '<span aria-hidden="true">⌄</span><b>展开</b>'
+    : '<span aria-hidden="true">⌃</span><b>收起</b>';
+}
+
+function toggleBluetoothCard() {
+  setBluetoothCardCollapsed(!ui.bluetoothCard.classList.contains("is-collapsed"));
+}
+
 function setConnected(connected) {
   diagnosticState.connected = connected;
   ui.connectionState.classList.toggle("connected", connected);
   ui.connectionText.textContent = connected ? "已连接" : "未连接";
+  ui.bluetoothSummary.classList.toggle("connected", connected);
+  ui.bluetoothSummaryState.textContent = connected ? "已连接" : "未连接";
+  ui.bluetoothSummaryDevice.textContent = connected ? (ui.deviceName.textContent || "未命名设备") : "--";
   ui.connectButton.disabled = connected;
   ui.reconnectButton.disabled = connected || connectionInProgress;
   ui.disconnectButton.disabled = !connected;
@@ -151,6 +173,7 @@ function setConnected(connected) {
   ui.parameterSyncState.textContent = connected ? "等待读取" : "等待连接";
   ui.parameterSyncState.className = "parameter-sync-state";
   document.body.classList.toggle("is-connected", connected);
+  setBluetoothCardCollapsed(connected);
 }
 
 function applyTheme(theme) {
@@ -1275,6 +1298,7 @@ ui.connectButton.addEventListener("click", connectBluetooth);
 ui.reconnectButton.addEventListener("click", () => reconnectRememberedDevice(false));
 ui.disconnectButton.addEventListener("click", disconnectBluetooth);
 ui.themeToggleButton.addEventListener("click", toggleTheme);
+ui.bluetoothCollapseButton.addEventListener("click", toggleBluetoothCard);
 
 document.querySelectorAll(".page-tab").forEach((button) => {
   button.addEventListener("click", () => selectPage(button.dataset.pageTarget));

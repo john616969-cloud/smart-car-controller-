@@ -81,6 +81,14 @@ h2 { margin: 0; font-size: 1.16rem; }
 .section-heading.compact { align-items: baseline; }
 .protocol, .command-hint, .alive-indicator { color: var(--muted); font-size: .78rem; font-weight: 700; }
 .protocol { color: var(--blue); letter-spacing: .08em; white-space: nowrap; }
+.bluetooth-heading-actions { display: flex; align-items: center; justify-content: flex-end; gap: 10px; }
+.bluetooth-collapse-button { display: inline-flex; align-items: center; justify-content: center; gap: 6px; min-height: 38px; padding: 0 11px; border: 1px solid #294864; border-radius: 12px; background: rgba(12,26,43,.8); color: var(--muted); font-size: .76rem; font-weight: 800; cursor: pointer; }
+.bluetooth-collapse-button span { color: var(--cyan); font-size: 1rem; }
+.bluetooth-summary { display: flex; align-items: center; gap: 8px; min-width: 0; margin-top: 8px; color: var(--muted); font-size: .82rem; font-weight: 750; }
+.bluetooth-summary strong { min-width: 0; max-width: min(48vw, 330px); overflow: hidden; color: var(--text); text-overflow: ellipsis; white-space: nowrap; }
+.summary-dot { flex: 0 0 auto; width: 9px; height: 9px; border-radius: 50%; background: #8591a2; box-shadow: 0 0 0 3px rgba(133,145,162,.12); }
+.bluetooth-summary.connected { color: var(--green); }
+.bluetooth-summary.connected .summary-dot { background: var(--green); box-shadow: 0 0 0 3px rgba(53,226,111,.14), 0 0 12px rgba(53,226,111,.4); }
 
 .connection-buttons { display: grid; grid-template-columns: 1fr auto auto; gap: 10px; }
 .button {
@@ -105,9 +113,11 @@ h2 { margin: 0; font-size: 1.16rem; }
 .message { min-height: 1.25em; margin: 12px 2px 0; color: var(--muted); font-size: .83rem; }
 .message.error { color: #ff8790; }
 .bluetooth-card { transition: padding .2s ease; }
-body.is-connected .bluetooth-card { padding-top: 15px; padding-bottom: 15px; }
-body.is-connected .bluetooth-card .section-heading { margin-bottom: 10px; }
-body.is-connected .bluetooth-card .protocol, body.is-connected .bluetooth-card .message { display: none; }
+.bluetooth-card.is-collapsed { padding-top: 15px; padding-bottom: 15px; }
+.bluetooth-card.is-collapsed .section-heading { margin-bottom: 0; }
+.bluetooth-card.is-collapsed .protocol { display: none; }
+.bluetooth-details { animation: bluetooth-details-in .18s ease; }
+@keyframes bluetooth-details-in { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: translateY(0); } }
 
 .distance-card { overflow: hidden; }
 .distance-layout { margin-top: 14px; justify-content: space-around; }
@@ -347,11 +357,14 @@ html[data-theme="light"] .page-tab.selected { color: #075cb9; background: #e6f1f
 html[data-theme="light"] .speed-presets button.selected, html[data-theme="light"] .mode-button.selected { color: #075cb9; background: #e6f1ff; }
 html[data-theme="light"] .export-panel { border-color: #c5d3e1; background: #fff; box-shadow: 0 25px 80px rgba(37,55,75,.24); }
 html[data-theme="light"] .export-backdrop { background: rgba(42,55,70,.45); }
+html[data-theme="light"] .bluetooth-collapse-button { border-color: #c5d3e1; background: #f3f7fb; color: #52657a; }
 
 @media (max-width: 580px) {
   .app-shell { padding-left: 12px; padding-right: 12px; }
   .card { padding: 16px; border-radius: 18px; }
   .connection-buttons { grid-template-columns: 1fr; }
+  .bluetooth-heading-actions { align-self: flex-start; }
+  .bluetooth-collapse-button { min-height: 36px; }
   .button.secondary { min-height: 46px; }
   .distance-gauge { width: 134px; }
   .distance-value strong { font-size: 2.55rem; }
