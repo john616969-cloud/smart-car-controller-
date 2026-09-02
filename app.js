@@ -3,7 +3,11 @@
 // JDY 模块使用的 BLE 服务和特征值 UUID。
 const SERVICE_UUID = "0000ffe0-0000-1000-8000-00805f9b34fb";
 const CHARACTERISTIC_UUID = "0000ffe1-0000-1000-8000-00805f9b34fb";
-const TARGET_DEVICE_NAME = "JDY-31-SPP";
+const TARGET_DEVICE_KEYWORD = "JDY";
+
+function isAllowedDeviceName(name) {
+  return typeof name === "string" && name.toUpperCase().includes(TARGET_DEVICE_KEYWORD);
+}
 
 const $ = (id) => document.getElementById(id);
 const ui = {
@@ -166,7 +170,7 @@ function toggleTheme() {
 function getRememberedDeviceRecord() {
   try {
     const value = JSON.parse(localStorage.getItem(REMEMBERED_DEVICE_KEY) || "null");
-    return value && value.id && value.name === TARGET_DEVICE_NAME ? value : null;
+    return value && value.id && isAllowedDeviceName(value.name) ? value : null;
   } catch (_) {
     return null;
   }
@@ -212,8 +216,8 @@ function addLog(text, kind = "rx") {
 
 async function connectDevice(device, source = "manual") {
   if (!device || connectionInProgress) return false;
-  if (device.name !== TARGET_DEVICE_NAME) {
-    setMessage(`已拒绝其他设备，只允许连接 ${TARGET_DEVICE_NAME}`, true);
+  if (!isAllowedDeviceName(device.name)) {
+    setMessage(`已拒绝其他设备，只允许连接名称含 ${TARGET_DEVICE_KEYWORD} 的设备`, true);
     addLog(`设备名称不匹配：${device.name || "未命名设备"}`, "error");
     return false;
   }
@@ -323,7 +327,7 @@ async function connectBluetooth() {
     clearTimeout(reconnectTimer);
     setMessage("正在打开蓝牙设备列表…");
     const selectedDevice = await navigator.bluetooth.requestDevice({
-      filters: [{ name: TARGET_DEVICE_NAME }],
+      filters: [{ namePrefix: TARGET_DEVICE_KEYWORD }],
       optionalServices: [SERVICE_UUID]
     });
     await connectDevice(selectedDevice, "manual");
