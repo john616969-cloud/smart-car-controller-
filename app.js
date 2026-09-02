@@ -19,6 +19,7 @@ const ui = {
   connectButton: $("connectButton"), reconnectButton: $("reconnectButton"), disconnectButton: $("disconnectButton"),
   rememberedDeviceLine: $("rememberedDeviceLine"), rememberedDeviceName: $("rememberedDeviceName"),
   deviceName: $("deviceName"), message: $("message"),
+  forwardButton: $("forwardButton"), emergencyStopButton: $("emergencyStopButton"),
   distanceGauge: $("distanceGauge"), distanceValue: $("distanceValue"), distanceUnit: $("distanceUnit"),
   obstacleState: $("obstacleState"), obstacleChinese: $("obstacleChinese"), obstacleValue: $("obstacleValue"),
   speedSlider: $("speedSlider"), speedReadout: $("speedReadout"), speedPresets: $("speedPresets"),
@@ -43,6 +44,13 @@ const ui = {
   downloadExportButton: $("downloadExportButton"), parameterSyncState: $("parameterSyncState"),
   readParametersButton: $("readParametersButton"), applyAllParametersButton: $("applyAllParametersButton"),
   exportParametersButton: $("exportParametersButton"),
+  stopwatchCard: $("stopwatchCard"), gearCard: $("gearCard"), stopwatchSummary: $("stopwatchSummary"),
+  stopwatchAutoButton: $("stopwatchAutoButton"), stopwatchManualButton: $("stopwatchManualButton"),
+  stopwatchTime: $("stopwatchTime"), stopwatchStatus: $("stopwatchStatus"),
+  stopwatchStartButton: $("stopwatchStartButton"), stopwatchStopButton: $("stopwatchStopButton"),
+  stopwatchLapButton: $("stopwatchLapButton"), stopwatchResetButton: $("stopwatchResetButton"),
+  stopwatchLapCount: $("stopwatchLapCount"), stopwatchLapList: $("stopwatchLapList"),
+  stopwatchHistory: $("stopwatchHistory"), stopwatchClearHistoryButton: $("stopwatchClearHistoryButton"),
   aliveIndicator: $("aliveIndicator"), logWindow: $("logWindow"), clearLogButton: $("clearLogButton")
 };
 
@@ -65,6 +73,9 @@ const REMEMBERED_DEVICE_KEY = "smartCarRememberedBluetoothDevice";
 const RECONNECT_DELAY_MS = 2000;
 const RECONNECT_MAX_ATTEMPTS = 3;
 const THEME_STORAGE_KEY = "smartCarControllerTheme";
+const STOPWATCH_HISTORY_KEY = "smartCarStopwatchHistoryV1";
+const COLLAPSIBLE_STATE_KEY = "smartCarCollapsibleCardsV1";
+const STOPWATCH_HISTORY_LIMIT = 10;
 const sensorHistory = [];
 const diagnosticLogs = [];
 let chartPaused = false;
@@ -84,6 +95,15 @@ let pendingGearReadTimer = null;
 let confirmedVoltageLevel = 80;
 let pendingVoltageLevel = 0;
 let pendingVoltageTimer = null;
+let stopwatchHistory = [];
+const stopwatchState = {
+  mode: "auto",
+  running: false,
+  startTime: 0,
+  elapsed: 0,
+  laps: [],
+  animationFrame: 0
+};
 
 function waitMilliseconds(milliseconds) {
   return new Promise((resolve) => setTimeout(resolve, milliseconds));
@@ -154,6 +174,230 @@ function setBluetoothCardCollapsed(collapsed) {
 
 function toggleBluetoothCard() {
   setBluetoothCardCollapsed(!ui.bluetoothCard.classList.contains("is-collapsed"));
+}
+
+function formatStopwatchTime(milliseconds) {
+  const total = Math.max(0, Math.floor(Number(milliseconds) || 0));
+  const minutes = Math.floor(total / 60000);
+  const seconds = Math.floor((total % 60000) / 1000);
+  const millis = total % 1000;
+  return `${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}.${String(millis).padStart(3, "0")}`;
+}
+
+function getStopwatchElapsed(now = performance.now()) {
+  return stopwatchState.running
+    ? stopwatchState.elapsed + Math.max(0, now - stopwatchState.startTime)
+    : stopwatchState.elapsed;
+}
+
+function loadStopwatchHistory() {
+  try {
+    const parsed = JSON.parse(localStorage.getItem(STOPWATCH_HISTORY_KEY) || "[]");
+    if (!Array.isArray(parsed)) return [];
+    return parsed.filter((record) =>
+      record && typeof record.id === "string" && Number.isFinite(record.finishedAt) &&
+      (record.mode === "auto" || record.mode === "manual") && Number.isFinite(record.total) &&
+      Array.isArray(record.laps)
+    ).slice(0, STOPWATCH_HISTORY_LIMIT).map((record) => ({
+      id: record.id,
+      finishedAt: record.finishedAt,
+      mode: record.mode,
+      total: Math.max(0, record.total),
+      laps: record.laps.filter((lap) => Number.isFinite(lap.split) && Number.isFinite(lap.total)).map((lap, index) => ({
+        index: index + 1,
+        split: Math.max(0, lap.split),
+        total: Math.max(0, lap.total)
+      }))
+    }));
+  } catch (_) {
+    return [];
+  }
+}
+
+function saveStopwatchHistory() {
+  try {
+    localStorage.setItem(STOPWATCH_HISTORY_KEY, JSON.stringify(stopwatchHistory));
+    return true;
+  } catch (_) {
+    setMessage("计时已完成，但浏览器无法保存历史记录", true);
+    return false;
+  }
+}
+
+function renderStopwatchLaps(target, laps) {
+  target.innerHTML = "";
+  if (!laps.length) {
+    const empty = document.createElement(target.tagName === "OL" ? "li" : "p");
+    empty.className = "empty-row";
+    empty.textContent = "尚未计次";
+    target.appendChild(empty);
+    return;
+  }
+  laps.slice().reverse().forEach((lap) => {
+    const row = document.createElement("li");
+    const label = document.createElement("strong");
+    const split = document.createElement("span");
+    const total = document.createElement("span");
+    label.textContent = `#${lap.index}`;
+    split.textContent = `分段 ${formatStopwatchTime(lap.split)}`;
+    total.textContent = `累计 ${formatStopwatchTime(lap.total)}`;
+    row.append(label, split, total);
+    target.appendChild(row);
+  });
+}
+
+function renderStopwatchHistory() {
+  ui.stopwatchHistory.innerHTML = "";
+  ui.stopwatchClearHistoryButton.disabled = stopwatchHistory.length === 0;
+  if (!stopwatchHistory.length) {
+    const empty = document.createElement("p");
+    empty.className = "empty-row";
+    empty.textContent = "暂无计时记录";
+    ui.stopwatchHistory.appendChild(empty);
+    return;
+  }
+
+  stopwatchHistory.forEach((record) => {
+    const details = document.createElement("details");
+    details.className = "stopwatch-record";
+    details.dataset.recordId = record.id;
+    const summary = document.createElement("summary");
+    const mode = document.createElement("span");
+    const main = document.createElement("span");
+    const total = document.createElement("strong");
+    const date = document.createElement("small");
+    const remove = document.createElement("button");
+    const lapBody = document.createElement("div");
+    const lapList = document.createElement("ol");
+    mode.className = "record-mode";
+    mode.textContent = record.mode === "auto" ? "自动" : "手动";
+    main.className = "record-main";
+    total.textContent = formatStopwatchTime(record.total);
+    date.textContent = `${new Date(record.finishedAt).toLocaleString("zh-CN", { hour12: false })} · ${record.laps.length} 次计次`;
+    main.append(total, date);
+    remove.className = "record-delete";
+    remove.type = "button";
+    remove.dataset.deleteRecord = record.id;
+    remove.textContent = "删除";
+    summary.append(mode, main, remove);
+    lapBody.className = "record-laps";
+    lapList.className = "lap-list";
+    renderStopwatchLaps(lapList, record.laps);
+    if (!record.laps.length) lapList.firstElementChild.textContent = "本次没有计次记录";
+    lapBody.appendChild(lapList);
+    details.append(summary, lapBody);
+    ui.stopwatchHistory.appendChild(details);
+  });
+}
+
+function renderStopwatch(now = performance.now()) {
+  const elapsed = getStopwatchElapsed(now);
+  const formatted = formatStopwatchTime(elapsed);
+  const automatic = stopwatchState.mode === "auto";
+  ui.stopwatchTime.textContent = formatted;
+  ui.stopwatchSummary.textContent = `${automatic ? "自动" : "手动"} · ${formatted}`;
+  ui.stopwatchTime.parentElement.classList.toggle("running", stopwatchState.running);
+  ui.stopwatchAutoButton.classList.toggle("selected", automatic);
+  ui.stopwatchManualButton.classList.toggle("selected", !automatic);
+  ui.stopwatchAutoButton.disabled = stopwatchState.running;
+  ui.stopwatchManualButton.disabled = stopwatchState.running;
+  ui.stopwatchStartButton.disabled = automatic || stopwatchState.running;
+  ui.stopwatchStopButton.disabled = automatic || !stopwatchState.running;
+  ui.stopwatchLapButton.disabled = !stopwatchState.running;
+  ui.stopwatchResetButton.disabled = stopwatchState.running || (elapsed === 0 && stopwatchState.laps.length === 0);
+  ui.stopwatchLapCount.textContent = `${stopwatchState.laps.length} 次`;
+
+  if (stopwatchState.running) {
+    ui.stopwatchStatus.textContent = automatic ? "自动计时中 · 紧急停车结束" : "手动计时中";
+  } else if (elapsed > 0) {
+    ui.stopwatchStatus.textContent = "已停止并保存";
+  } else {
+    ui.stopwatchStatus.textContent = automatic ? "等待开始循迹" : "等待手动开始";
+  }
+}
+
+function stopwatchAnimationTick(now) {
+  renderStopwatch(now);
+  if (stopwatchState.running) stopwatchState.animationFrame = requestAnimationFrame(stopwatchAnimationTick);
+}
+
+function startStopwatch() {
+  if (stopwatchState.running) return false;
+  stopwatchState.elapsed = 0;
+  stopwatchState.laps = [];
+  stopwatchState.startTime = performance.now();
+  stopwatchState.running = true;
+  renderStopwatchLaps(ui.stopwatchLapList, stopwatchState.laps);
+  renderStopwatch(stopwatchState.startTime);
+  cancelAnimationFrame(stopwatchState.animationFrame);
+  stopwatchState.animationFrame = requestAnimationFrame(stopwatchAnimationTick);
+  return true;
+}
+
+function stopStopwatch() {
+  if (!stopwatchState.running) return false;
+  stopwatchState.elapsed = getStopwatchElapsed();
+  stopwatchState.running = false;
+  cancelAnimationFrame(stopwatchState.animationFrame);
+  stopwatchState.animationFrame = 0;
+  const record = {
+    id: `${Date.now()}-${Math.random().toString(16).slice(2)}`,
+    finishedAt: Date.now(),
+    mode: stopwatchState.mode,
+    total: Math.round(stopwatchState.elapsed),
+    laps: stopwatchState.laps.map((lap) => ({ ...lap }))
+  };
+  stopwatchHistory.unshift(record);
+  stopwatchHistory = stopwatchHistory.slice(0, STOPWATCH_HISTORY_LIMIT);
+  saveStopwatchHistory();
+  renderStopwatchHistory();
+  renderStopwatch();
+  return true;
+}
+
+function lapStopwatch() {
+  if (!stopwatchState.running) return false;
+  const total = getStopwatchElapsed();
+  const previousTotal = stopwatchState.laps.length ? stopwatchState.laps[stopwatchState.laps.length - 1].total : 0;
+  stopwatchState.laps.push({ index: stopwatchState.laps.length + 1, split: total - previousTotal, total });
+  renderStopwatchLaps(ui.stopwatchLapList, stopwatchState.laps);
+  renderStopwatch();
+  return true;
+}
+
+function resetStopwatch() {
+  if (stopwatchState.running) return false;
+  stopwatchState.elapsed = 0;
+  stopwatchState.laps = [];
+  renderStopwatchLaps(ui.stopwatchLapList, stopwatchState.laps);
+  renderStopwatch();
+  return true;
+}
+
+function setStopwatchMode(mode) {
+  if (stopwatchState.running || !["auto", "manual"].includes(mode)) return false;
+  stopwatchState.mode = mode;
+  resetStopwatch();
+  return true;
+}
+
+function readCollapsibleStates() {
+  try {
+    const parsed = JSON.parse(localStorage.getItem(COLLAPSIBLE_STATE_KEY) || "{}");
+    return parsed && typeof parsed === "object" ? parsed : {};
+  } catch (_) {
+    return {};
+  }
+}
+
+function bindCollapsibleCard(card, key) {
+  const states = readCollapsibleStates();
+  if (typeof states[key] === "boolean") card.open = states[key];
+  card.addEventListener("toggle", () => {
+    const latest = readCollapsibleStates();
+    latest[key] = card.open;
+    try { localStorage.setItem(COLLAPSIBLE_STATE_KEY, JSON.stringify(latest)); } catch (_) {}
+  });
 }
 
 function setConnected(connected) {
@@ -1327,7 +1571,35 @@ document.querySelectorAll(".control-button").forEach((button) => {
     if (button === ui.crossroadToggleButton) {
       setCrossroadDetection(String(command).toUpperCase() === "Q");
     }
+    if (stopwatchState.mode === "auto" && button === ui.forwardButton && String(command).toUpperCase() === "F") {
+      startStopwatch();
+    }
+    if (stopwatchState.mode === "auto" && button === ui.emergencyStopButton && String(command).toUpperCase() === "S") {
+      stopStopwatch();
+    }
   });
+});
+
+ui.stopwatchAutoButton.addEventListener("click", () => setStopwatchMode("auto"));
+ui.stopwatchManualButton.addEventListener("click", () => setStopwatchMode("manual"));
+ui.stopwatchStartButton.addEventListener("click", startStopwatch);
+ui.stopwatchStopButton.addEventListener("click", stopStopwatch);
+ui.stopwatchLapButton.addEventListener("click", lapStopwatch);
+ui.stopwatchResetButton.addEventListener("click", resetStopwatch);
+ui.stopwatchHistory.addEventListener("click", (event) => {
+  const button = event.target.closest("[data-delete-record]");
+  if (!button) return;
+  event.preventDefault();
+  event.stopPropagation();
+  stopwatchHistory = stopwatchHistory.filter((record) => record.id !== button.dataset.deleteRecord);
+  saveStopwatchHistory();
+  renderStopwatchHistory();
+});
+ui.stopwatchClearHistoryButton.addEventListener("click", () => {
+  if (!stopwatchHistory.length || !window.confirm("确认清空全部计时记录吗？此操作无法撤销。")) return;
+  stopwatchHistory = [];
+  saveStopwatchHistory();
+  renderStopwatchHistory();
 });
 
 ui.speedSlider.addEventListener("input", () => selectSpeed(ui.speedSlider.value));
@@ -1443,6 +1715,12 @@ setInterval(() => { if (!chartPaused) scheduleChartDraw(); }, 1000);
 let initialTheme = "dark";
 try { initialTheme = localStorage.getItem(THEME_STORAGE_KEY) === "light" ? "light" : "dark"; } catch (_) {}
 applyTheme(initialTheme);
+stopwatchHistory = loadStopwatchHistory();
+bindCollapsibleCard(ui.stopwatchCard, "stopwatch");
+bindCollapsibleCard(ui.gearCard, "gear");
+renderStopwatchLaps(ui.stopwatchLapList, stopwatchState.laps);
+renderStopwatchHistory();
+renderStopwatch();
 setConnected(false);
 const rememberedDeviceOnLoad = updateRememberedDeviceUi();
 selectSpeed(3);

@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta name="theme-color" content="#050b14">
   <title>智能车控制台</title>
-  <link rel="stylesheet" href="styles.css?v=20260902-2">
+  <link rel="stylesheet" href="styles.css?v=20260902-3">
 </head>
 <body>
   <main class="app-shell">
@@ -118,7 +118,7 @@
         <span class="command-hint">发送 ASCII 命令</span>
       </div>
       <div class="control-grid">
-        <button class="button drive forward control-button" data-command="F" type="button" disabled>
+        <button class="button drive forward control-button" id="forwardButton" data-command="F" type="button" disabled>
           <span>▶</span><strong>开始循迹</strong><small>F</small>
         </button>
         <button class="button drive reverse control-button" data-command="B" type="button" disabled>
@@ -127,24 +127,66 @@
       </div>
     </section>
 
-    <section class="card page-card" data-page="control" aria-labelledby="speedTitle">
-      <div class="section-heading compact">
+    <details class="card collapsible-control-card stopwatch-card page-card" id="stopwatchCard" data-page="control" open>
+      <summary class="collapsible-card-summary">
+        <div><p class="section-kicker">RACE TIMER</p><h2 id="stopwatchTitle">赛道计时</h2></div>
+        <div class="collapsible-summary-side">
+          <strong id="stopwatchSummary">自动 · 00:00.000</strong>
+          <span class="collapse-hint"><b>收起</b><i aria-hidden="true">⌃</i></span>
+        </div>
+      </summary>
+      <div class="collapsible-card-content" aria-labelledby="stopwatchTitle">
+        <div class="stopwatch-mode" role="group" aria-label="计时模式">
+          <button class="selected" id="stopwatchAutoButton" type="button">自动计时</button>
+          <button id="stopwatchManualButton" type="button">手动计时</button>
+        </div>
+        <div class="stopwatch-display" aria-live="off">
+          <strong id="stopwatchTime">00:00.000</strong>
+          <span id="stopwatchStatus">等待开始循迹</span>
+        </div>
+        <div class="stopwatch-actions">
+          <button id="stopwatchStartButton" type="button" disabled>开始</button>
+          <button id="stopwatchStopButton" type="button" disabled>停止</button>
+          <button id="stopwatchLapButton" type="button" disabled>计次</button>
+          <button id="stopwatchResetButton" type="button" disabled>复位</button>
+        </div>
+        <section class="stopwatch-section" aria-labelledby="currentLapsTitle">
+          <div class="stopwatch-section-heading"><h3 id="currentLapsTitle">本次计次</h3><span id="stopwatchLapCount">0 次</span></div>
+          <ol class="lap-list" id="stopwatchLapList"><li class="empty-row">尚未计次</li></ol>
+        </section>
+        <section class="stopwatch-section" aria-labelledby="stopwatchHistoryTitle">
+          <div class="stopwatch-section-heading">
+            <div><h3 id="stopwatchHistoryTitle">最近计时</h3><span>最多保存 10 次</span></div>
+            <button class="text-button compact-button" id="stopwatchClearHistoryButton" type="button" disabled>清空全部</button>
+          </div>
+          <div class="stopwatch-history" id="stopwatchHistory"><p class="empty-row">暂无计时记录</p></div>
+        </section>
+      </div>
+    </details>
+
+    <details class="card collapsible-control-card gear-card page-card" id="gearCard" data-page="control" open>
+      <summary class="collapsible-card-summary">
         <div><p class="section-kicker">GEAR</p><h2 id="speedTitle">档位设置</h2></div>
-        <strong class="speed-readout" id="speedReadout">当前 3 档</strong>
+        <div class="collapsible-summary-side">
+          <strong class="speed-readout" id="speedReadout">当前 3 档</strong>
+          <span class="collapse-hint"><b>收起</b><i aria-hidden="true">⌃</i></span>
+        </div>
+      </summary>
+      <div class="collapsible-card-content" aria-labelledby="speedTitle">
+        <input class="speed-slider visually-hidden" id="speedSlider" type="range" min="1" max="9" step="1" value="3" disabled aria-label="速度档位">
+        <div class="speed-presets" id="speedPresets">
+          <button data-speed="1" type="button" disabled><strong>1</strong><small>档</small></button>
+          <button data-speed="2" type="button" disabled><strong>2</strong><small>档</small></button>
+          <button class="selected" data-speed="3" type="button" disabled><strong>3</strong><small>档</small></button>
+          <button data-speed="4" type="button" disabled><strong>4</strong><small>档</small></button>
+          <button data-speed="5" type="button" disabled><strong>5</strong><small>档</small></button>
+          <button data-speed="6" type="button" disabled><strong>6</strong><small>档</small></button>
+          <button data-speed="7" type="button" disabled><strong>7</strong><small>档</small></button>
+          <button data-speed="8" type="button" disabled><strong>8</strong><small>档</small></button>
+          <button data-speed="9" type="button" disabled><strong>9</strong><small>档</small></button>
+        </div>
       </div>
-      <input class="speed-slider visually-hidden" id="speedSlider" type="range" min="1" max="9" step="1" value="3" disabled aria-label="速度档位">
-      <div class="speed-presets" id="speedPresets">
-        <button data-speed="1" type="button" disabled><strong>1</strong><small>档</small></button>
-        <button data-speed="2" type="button" disabled><strong>2</strong><small>档</small></button>
-        <button class="selected" data-speed="3" type="button" disabled><strong>3</strong><small>档</small></button>
-        <button data-speed="4" type="button" disabled><strong>4</strong><small>档</small></button>
-        <button data-speed="5" type="button" disabled><strong>5</strong><small>档</small></button>
-        <button data-speed="6" type="button" disabled><strong>6</strong><small>档</small></button>
-        <button data-speed="7" type="button" disabled><strong>7</strong><small>档</small></button>
-        <button data-speed="8" type="button" disabled><strong>8</strong><small>档</small></button>
-        <button data-speed="9" type="button" disabled><strong>9</strong><small>档</small></button>
-      </div>
-    </section>
+    </details>
 
     <section class="card page-card" data-page="sensor" aria-labelledby="sensorModeTitle" hidden>
       <div class="section-heading compact">
@@ -408,6 +450,6 @@
     </section>
   </div>
 
-  <script src="app.js?v=20260902-3"></script>
+  <script src="app.js?v=20260902-4"></script>
 </body>
 </html>

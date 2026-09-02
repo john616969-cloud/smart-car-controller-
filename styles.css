@@ -181,6 +181,57 @@ h2 { margin: 0; font-size: 1.16rem; }
 .stop { background: linear-gradient(145deg, #ff4853, #d5182d); box-shadow: 0 8px 25px rgba(255,60,72,.2); }
 .reverse { background: linear-gradient(145deg, #31465f, #1e2c40); border-color: #47617f; }
 
+.collapsible-control-card { padding: 0; overflow: hidden; }
+.collapsible-control-card > summary { list-style: none; }
+.collapsible-control-card > summary::-webkit-details-marker { display: none; }
+.collapsible-card-summary { display: flex; align-items: center; justify-content: space-between; gap: 14px; min-height: 84px; padding: 18px 20px; cursor: pointer; user-select: none; }
+.collapsible-card-summary > * { min-width: 0; }
+.collapsible-control-card[open] > .collapsible-card-summary { border-bottom: 1px solid rgba(41,67,95,.58); background: rgba(22,135,255,.035); }
+.collapsible-card-content { padding: 18px 20px 20px; }
+.collapsible-summary-side { display: flex; flex-direction: column; align-items: flex-end; gap: 6px; text-align: right; }
+.collapsible-summary-side > strong { max-width: 48vw; overflow: hidden; color: var(--blue); font-size: .9rem; text-overflow: ellipsis; white-space: nowrap; }
+.collapse-hint { display: inline-flex; align-items: center; gap: 5px; color: var(--muted); font-size: .68rem; font-weight: 800; }
+.collapse-hint i { color: var(--cyan); font-style: normal; font-size: .95rem; transition: transform .18s ease; }
+.collapsible-control-card:not([open]) .collapse-hint i { transform: rotate(180deg); }
+.collapsible-control-card:not([open]) .collapse-hint b::after { content: "展开"; }
+.collapsible-control-card:not([open]) .collapse-hint b { font-size: 0; }
+.collapsible-control-card:not([open]) .collapse-hint b::after { font-size: .68rem; }
+
+.stopwatch-mode { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.stopwatch-mode button, .stopwatch-actions button { min-height: 44px; border: 1px solid #29435f; border-radius: 12px; background: #0c1a2b; color: var(--muted); font-weight: 850; cursor: pointer; }
+.stopwatch-mode button.selected { border-color: var(--blue); background: rgba(22,135,255,.23); color: white; box-shadow: inset 0 0 0 1px rgba(22,135,255,.22); }
+.stopwatch-mode button:disabled, .stopwatch-actions button:disabled { cursor: not-allowed; opacity: .4; }
+.stopwatch-display { display: flex; flex-direction: column; align-items: center; gap: 7px; margin: 14px 0; padding: 18px 12px; border: 1px solid #284967; border-radius: 16px; background: linear-gradient(180deg,rgba(3,10,18,.82),rgba(8,22,37,.9)); }
+.stopwatch-display strong { color: var(--cyan); font: 900 clamp(2rem,8vw,3.25rem)/1 ui-monospace, SFMono-Regular, Consolas, monospace; letter-spacing: -.045em; font-variant-numeric: tabular-nums; }
+.stopwatch-display span { color: var(--muted); font-size: .76rem; font-weight: 800; }
+.stopwatch-display.running { border-color: rgba(53,226,111,.65); box-shadow: inset 0 0 24px rgba(53,226,111,.06); }
+.stopwatch-display.running strong { color: var(--green); }
+.stopwatch-actions { display: grid; grid-template-columns: repeat(4,1fr); gap: 8px; }
+.stopwatch-actions button:first-child { color: var(--green); }
+.stopwatch-actions button:nth-child(2) { color: var(--red); }
+.stopwatch-actions button:nth-child(3) { color: var(--cyan); }
+.stopwatch-section { margin-top: 16px; padding-top: 14px; border-top: 1px solid rgba(41,67,95,.58); }
+.stopwatch-section-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 9px; }
+.stopwatch-section-heading h3 { margin: 0; font-size: .88rem; }
+.stopwatch-section-heading span { color: var(--muted); font-size: .7rem; font-weight: 750; }
+.compact-button { min-height: 34px; padding: 0 10px; }
+.lap-list { margin: 0; padding: 0; list-style: none; }
+.lap-list li:not(.empty-row) { display: grid; grid-template-columns: 54px 1fr 1fr; gap: 8px; padding: 8px 10px; border-radius: 9px; color: var(--muted); font: 750 .74rem ui-monospace, SFMono-Regular, Consolas, monospace; }
+.lap-list li:nth-child(odd):not(.empty-row) { background: rgba(22,135,255,.055); }
+.lap-list strong { color: var(--text); }
+.empty-row { margin: 0; padding: 12px; border: 1px dashed #29435f; border-radius: 10px; color: var(--muted); font-size: .75rem; text-align: center; }
+.stopwatch-history { display: grid; gap: 8px; }
+.stopwatch-record { border: 1px solid #29435f; border-radius: 12px; background: rgba(3,10,18,.28); overflow: hidden; }
+.stopwatch-record > summary { display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 9px; padding: 11px; list-style: none; cursor: pointer; }
+.stopwatch-record > summary::-webkit-details-marker { display: none; }
+.record-mode { padding: 4px 7px; border-radius: 7px; background: rgba(22,135,255,.16); color: var(--blue); font-size: .66rem; font-weight: 900; }
+.record-main { min-width: 0; }
+.record-main strong, .record-main small { display: block; }
+.record-main strong { color: var(--text); font: 850 .9rem ui-monospace, SFMono-Regular, Consolas, monospace; }
+.record-main small { margin-top: 3px; color: var(--muted); font-size: .66rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.record-delete { min-height: 32px; padding: 0 9px; border: 1px solid rgba(255,60,72,.42); border-radius: 8px; background: rgba(255,60,72,.08); color: var(--red); font-size: .68rem; font-weight: 850; cursor: pointer; }
+.record-laps { padding: 0 10px 10px; }
+
 .speed-readout { color: var(--blue); font-size: 1rem; }
 .speed-slider { width: 100%; accent-color: var(--blue); }
 .speed-presets { display: grid; grid-template-columns: repeat(10, 1fr); gap: 8px; margin-top: 8px; }
@@ -361,6 +412,14 @@ html[data-theme="light"] .bluetooth-collapse-button { border-color: #c5d3e1; bac
 html[data-theme="light"] .distance-gauge::before { background: #f4f7fa; box-shadow: inset 0 0 24px rgba(37,55,75,.08); }
 html[data-theme="light"] .distance-value strong { color: #172333; }
 html[data-theme="light"] .distance-value span { color: #52657a; }
+html[data-theme="light"] .collapsible-control-card[open] > .collapsible-card-summary { border-color: #d3dee9; background: #f8fbfe; }
+html[data-theme="light"] .stopwatch-mode button, html[data-theme="light"] .stopwatch-actions button { border-color: #c7d4e2; background: #f2f6fa; color: #52657a; }
+html[data-theme="light"] .stopwatch-mode button.selected { border-color: #126bd6; background: #e6f1ff; color: #075cb9; }
+html[data-theme="light"] .stopwatch-display { border-color: #c5d3e1; background: #f4f7fa; }
+html[data-theme="light"] .stopwatch-display strong { color: #075cb9; }
+html[data-theme="light"] .stopwatch-display.running strong { color: #16834a; }
+html[data-theme="light"] .stopwatch-record { border-color: #d0dce8; background: #f8fafc; }
+html[data-theme="light"] .empty-row { border-color: #c7d4e2; }
 
 @media (max-width: 580px) {
   .app-shell { padding-left: 12px; padding-right: 12px; }
@@ -375,6 +434,9 @@ html[data-theme="light"] .distance-value span { color: #52657a; }
   .obstacle-state strong { font-size: 1.1rem; }
   .export-actions { grid-template-columns: 1fr 1fr; }
   .control-grid { grid-template-columns: 1fr 1fr; }
+  .collapsible-card-summary { min-height: 76px; padding: 15px 16px; }
+  .collapsible-card-content { padding: 15px 16px 17px; }
+  .stopwatch-actions { grid-template-columns: 1fr 1fr; }
   .emergency-stop { grid-template-columns: auto 1fr; }
   .emergency-stop small { grid-column: 2; }
   .sensor-grid { grid-template-columns: repeat(2, 1fr); }
@@ -401,6 +463,8 @@ html[data-theme="light"] .distance-value span { color: #52657a; }
   .obstacle-state .shield { display: none; }
   .speed-presets { gap: 5px; }
   .speed-presets button { min-height: 43px; font-size: .8rem; }
+  .stopwatch-display strong { font-size: clamp(1.85rem,10vw,2.65rem); }
+  .lap-list li:not(.empty-row) { grid-template-columns: 46px 1fr 1fr; padding-left: 7px; padding-right: 7px; font-size: .68rem; }
   .voltage-presets { grid-template-columns: repeat(4, 1fr); }
   .motor-grid { grid-template-columns: 1fr; }
   .chart-wrap { height: 235px; }
