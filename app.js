@@ -110,13 +110,13 @@ function waitMilliseconds(milliseconds) {
 }
 
 const parameterDefinitions = {
-  PID_DEADBAND: { label: "循迹误差死区", unit: "", min: 0, max: 500, step: 10, defaultValue: 180 },
-  PID_DIVISOR: { label: "P 控制除数", unit: "", min: 20, max: 500, step: 5, defaultValue: 180 },
-  PID_LIMIT: { label: "最大差速修正", unit: "%", min: 0, max: 60, step: 1, defaultValue: 12 },
-  PID_D_GAIN: { label: "D 平滑强度", unit: "", min: 0, max: 30, step: 1, defaultValue: 4 },
-  APPROACH_PID_DIVISOR: { label: "接近阶段 P 除数", unit: "", min: 100, max: 1200, step: 10, defaultValue: 500 },
-  APPROACH_PID_D_GAIN: { label: "接近阶段 D 强度", unit: "", min: 0, max: 20, step: 1, defaultValue: 2 },
-  APPROACH_PID_LIMIT: { label: "接近阶段最大差速", unit: "%", min: 0, max: 20, step: 1, defaultValue: 5 },
+  PID_DEADBAND: { label: "循迹误差死区", unit: "", unbounded: true, step: 10, defaultValue: 180 },
+  PID_DIVISOR: { label: "P 控制除数", unit: "", unbounded: true, nonzero: true, step: 5, defaultValue: 180 },
+  PID_LIMIT: { label: "最大差速修正", unit: "%", unbounded: true, step: 1, defaultValue: 12 },
+  PID_D_GAIN: { label: "D 平滑强度", unit: "", unbounded: true, step: 1, defaultValue: 4 },
+  APPROACH_PID_DIVISOR: { label: "接近阶段 P 除数", unit: "", unbounded: true, nonzero: true, step: 10, defaultValue: 500 },
+  APPROACH_PID_D_GAIN: { label: "接近阶段 D 强度", unit: "", unbounded: true, step: 1, defaultValue: 2 },
+  APPROACH_PID_LIMIT: { label: "接近阶段最大差速", unit: "%", unbounded: true, step: 1, defaultValue: 5 },
   CROSS_APPROACH_ERROR: { label: "接近误差阈值", unit: "", min: 100, max: 3000, step: 50, defaultValue: 900 },
   CROSS_OUTER_MIN: { label: "入口侧外传感器下限", unit: "", min: 0, max: 4095, step: 25, defaultValue: 350 },
   CROSS_DUAL_PEAK_MIN: { label: "十字双峰下限", unit: "", min: 0, max: 4095, step: 50, defaultValue: 1700 },
@@ -707,11 +707,15 @@ function validateParameterValues(showErrors = true) {
   Object.entries(parameterDefinitions).forEach(([key, definition]) => {
     const input = getParameterInput(key);
     const value = Number(input.value);
-    const itemValid = Number.isInteger(value) && value >= definition.min && value <= definition.max;
+    const itemValid = Number.isInteger(value) && (definition.unbounded
+      ? value >= (definition.nonzero ? 1 : 0) && value <= 65535
+      : value >= definition.min && value <= definition.max);
     input.classList.toggle("invalid", !itemValid);
     if (!itemValid) {
       valid = false;
-      if (showErrors) setParameterRowState(key, `范围应为 ${definition.min}～${definition.max}`, "error");
+      if (showErrors) setParameterRowState(key, definition.unbounded
+        ? (definition.nonzero ? "请输入大于0的整数" : "请输入非负整数")
+        : `范围应为 ${definition.min}～${definition.max}`, "error");
     }
     values[key] = value;
   });
@@ -763,7 +767,7 @@ function handleParameterValue(key, value) {
 }
 
 function handleParameterError(key, reason) {
-  const labels = { RANGE: "数值超出范围", RELATION: "与另一参数关系不正确", FORMAT: "命令格式错误", UNKNOWN: "参数名未知" };
+  const labels = { RANGE: "数值超出范围", ZERO: "P 除数不能为 0", RELATION: "与另一参数关系不正确", FORMAT: "命令格式错误", UNKNOWN: "参数名未知" };
   if (key === "VOLTAGE_LEVEL") {
     if (pendingVoltageTimer) clearTimeout(pendingVoltageTimer);
     pendingVoltageTimer = null;
@@ -1620,7 +1624,10 @@ document.querySelectorAll("[data-param-delta]").forEach((button) => {
     const definition = parameterDefinitions[input.dataset.key];
     const direction = Number(button.dataset.paramDelta);
     const current = Number.isFinite(Number(input.value)) ? Number(input.value) : definition.defaultValue;
-    input.value = String(Math.max(definition.min, Math.min(definition.max, current + direction * definition.step)));
+    const nextValue = current + direction * definition.step;
+    input.value = String(definition.unbounded
+      ? Math.max(definition.nonzero ? 1 : 0, nextValue)
+      : Math.max(definition.min, Math.min(definition.max, nextValue)));
     input.classList.remove("invalid");
     setParameterRowState(input.dataset.key, "已修改，尚未应用", "pending");
     validateParameterValues(false);

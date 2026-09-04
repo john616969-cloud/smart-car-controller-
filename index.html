@@ -256,22 +256,22 @@
         <div class="parameter-list">
         <div class="parameter-row" data-parameter="PID_DEADBAND">
           <div class="parameter-description"><strong>误差死区</strong><span>增大更稳，减小更灵敏</span></div>
-          <div class="parameter-editor"><button data-param-delta="-1" type="button">−</button><input class="parameter-input" data-key="PID_DEADBAND" type="number" min="0" max="500" step="10" value="180" inputmode="numeric"><button data-param-delta="1" type="button">＋</button></div>
+          <div class="parameter-editor"><button data-param-delta="-1" type="button">−</button><input class="parameter-input" data-key="PID_DEADBAND" type="number" step="10" value="180" inputmode="numeric"><button data-param-delta="1" type="button">＋</button></div>
           <button class="parameter-apply parameter-action" type="button" disabled>应用</button><span class="parameter-item-state">默认值</span>
         </div>
         <div class="parameter-row" data-parameter="PID_DIVISOR">
           <div class="parameter-description"><strong>P 控制除数</strong><span>减小转向更强，增大更柔和</span></div>
-          <div class="parameter-editor"><button data-param-delta="-1" type="button">−</button><input class="parameter-input" data-key="PID_DIVISOR" type="number" min="20" max="500" step="5" value="180" inputmode="numeric"><button data-param-delta="1" type="button">＋</button></div>
+          <div class="parameter-editor"><button data-param-delta="-1" type="button">−</button><input class="parameter-input" data-key="PID_DIVISOR" type="number" step="5" value="180" inputmode="numeric"><button data-param-delta="1" type="button">＋</button></div>
           <button class="parameter-apply parameter-action" type="button" disabled>应用</button><span class="parameter-item-state">默认值</span>
         </div>
         <div class="parameter-row" data-parameter="PID_LIMIT">
           <div class="parameter-description"><strong>最大差速修正</strong><span>增大过弯更强，过大会摆动</span></div>
-          <div class="parameter-editor"><button data-param-delta="-1" type="button">−</button><input class="parameter-input" data-key="PID_LIMIT" type="number" min="0" max="60" step="1" value="12" inputmode="numeric"><button data-param-delta="1" type="button">＋</button></div>
+          <div class="parameter-editor"><button data-param-delta="-1" type="button">−</button><input class="parameter-input" data-key="PID_LIMIT" type="number" step="1" value="12" inputmode="numeric"><button data-param-delta="1" type="button">＋</button></div>
           <button class="parameter-apply parameter-action" type="button" disabled>应用</button><span class="parameter-item-state">默认值</span>
         </div>
         <div class="parameter-row" data-parameter="PID_D_GAIN">
           <div class="parameter-description"><strong>D 平滑强度</strong><span>增大抑制摇头；过大会反应迟钝</span></div>
-          <div class="parameter-editor"><button data-param-delta="-1" type="button">−</button><input class="parameter-input" data-key="PID_D_GAIN" type="number" min="0" max="30" step="1" value="4" inputmode="numeric"><button data-param-delta="1" type="button">＋</button></div>
+          <div class="parameter-editor"><button data-param-delta="-1" type="button">−</button><input class="parameter-input" data-key="PID_D_GAIN" type="number" step="1" value="4" inputmode="numeric"><button data-param-delta="1" type="button">＋</button></div>
           <button class="parameter-apply parameter-action" type="button" disabled>应用</button><span class="parameter-item-state">默认值</span>
         </div>
         </div>
@@ -282,17 +282,17 @@
         <div class="parameter-list">
         <div class="parameter-row" data-parameter="APPROACH_PID_DIVISOR">
           <div class="parameter-description"><strong>接近阶段 P 除数</strong><span>增大纠偏更弱，路口前更接近直行</span></div>
-          <div class="parameter-editor"><button data-param-delta="-1" type="button">−</button><input class="parameter-input" data-key="APPROACH_PID_DIVISOR" type="number" min="100" max="1200" step="10" value="500" inputmode="numeric"><button data-param-delta="1" type="button">＋</button></div>
+          <div class="parameter-editor"><button data-param-delta="-1" type="button">−</button><input class="parameter-input" data-key="APPROACH_PID_DIVISOR" type="number" step="10" value="500" inputmode="numeric"><button data-param-delta="1" type="button">＋</button></div>
           <button class="parameter-apply parameter-action" type="button" disabled>应用</button><span class="parameter-item-state">默认值</span>
         </div>
         <div class="parameter-row" data-parameter="APPROACH_PID_D_GAIN">
           <div class="parameter-description"><strong>接近阶段 D 强度</strong><span>增大抑制变化，过大会使响应迟钝</span></div>
-          <div class="parameter-editor"><button data-param-delta="-1" type="button">−</button><input class="parameter-input" data-key="APPROACH_PID_D_GAIN" type="number" min="0" max="20" step="1" value="2" inputmode="numeric"><button data-param-delta="1" type="button">＋</button></div>
+          <div class="parameter-editor"><button data-param-delta="-1" type="button">−</button><input class="parameter-input" data-key="APPROACH_PID_D_GAIN" type="number" step="1" value="2" inputmode="numeric"><button data-param-delta="1" type="button">＋</button></div>
           <button class="parameter-apply parameter-action" type="button" disabled>应用</button><span class="parameter-item-state">默认值</span>
         </div>
         <div class="parameter-row" data-parameter="APPROACH_PID_LIMIT">
           <div class="parameter-description"><strong>接近阶段最大差速</strong><span>减小更直，增大跟线能力更强</span></div>
-          <div class="parameter-editor"><button data-param-delta="-1" type="button">−</button><input class="parameter-input" data-key="APPROACH_PID_LIMIT" type="number" min="0" max="20" step="1" value="5" inputmode="numeric"><button data-param-delta="1" type="button">＋</button></div>
+          <div class="parameter-editor"><button data-param-delta="-1" type="button">−</button><input class="parameter-input" data-key="APPROACH_PID_LIMIT" type="number" step="1" value="5" inputmode="numeric"><button data-param-delta="1" type="button">＋</button></div>
           <button class="parameter-apply parameter-action" type="button" disabled>应用</button><span class="parameter-item-state">默认值 · %</span>
         </div>
       </div>
